@@ -1,5 +1,5 @@
 "use client";
-import Component from "@/pages/Index";
+import Component from "app/Index";
 export default function Page() {
   return <Component />;
 }
