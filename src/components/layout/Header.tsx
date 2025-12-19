@@ -7,8 +7,7 @@ import BrandMark from "@/components/brand/BrandMark";
 import { cn } from '@/lib/utils';
 
 const Header: React.FC = () => {
-  const pathname = usePathname();
-  const isStaffRoute = pathname.startsWith('/staff');
+  const isStaffRoute = (usePathname() ?? '').startsWith('/staff');
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-card/80 backdrop-blur-lg">
