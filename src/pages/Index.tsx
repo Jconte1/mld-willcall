@@ -8,9 +8,10 @@ import LocationSelector from '@/components/scheduling/LocationSelector';
 import { usePickup } from '@/context/PickupContext';
 import { mockLocations } from '@/lib/mockData';
 import Header from '@/components/layout/Header';
+import BrandMark from '@/components/brand/BrandMark';
 
 const Index: React.FC = () => {
-  const router = useRouter();const { updateFormData, formData } = usePickup();
+  const router = useRouter(); const { updateFormData, formData } = usePickup();
   const [pickupNumber, setPickupNumber] = useState(formData.pickupReference);
   const [selectedLocation, setSelectedLocation] = useState(formData.locationId || mockLocations[0].id);
   const [error, setError] = useState('');
@@ -20,12 +21,12 @@ const Index: React.FC = () => {
       setError('Please enter your pickup number');
       return;
     }
-    
+
     updateFormData({
       pickupReference: pickupNumber.trim(),
       locationId: selectedLocation,
     });
-    
+
     router.push('/schedule');
   };
 
@@ -50,14 +51,18 @@ const Index: React.FC = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container py-8 md:py-16">
         <div className="max-w-4xl mx-auto">
           {/* Hero Section */}
           <div className="text-center mb-12 animate-fade-in">
-            <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl gradient-hero shadow-glow mb-6">
-              <Package className="h-8 w-8 text-primary-foreground" />
+            <div className="mx-auto mb-4">
+              <BrandMark
+                size={150}
+                className="opacity-90 transition-opacity md:[&]:!opacity-90"
+              />
             </div>
+
             <h1 className="font-display text-4xl md:text-5xl font-bold text-foreground mb-4">
               Schedule Your Pickup
             </h1>

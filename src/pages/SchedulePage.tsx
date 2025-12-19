@@ -29,10 +29,9 @@ const SchedulePage: React.FC = () => {
 
   // Redirect if no pickup reference
   useEffect(() => {
-    if (!formData.pickupReference) {
-      router.push('/');
-    }
-  }, [formData.pickupReference, navigate]);
+  if (!formData.pickupReference) router.push('/');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [formData.pickupReference]);
 
   const availability = useMemo(() => {
     return generateAvailability(new Date(), 60);

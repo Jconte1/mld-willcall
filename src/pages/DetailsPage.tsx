@@ -31,10 +31,9 @@ const DetailsPage: React.FC = () => {
 
   // Redirect if no date/slot selected
   useEffect(() => {
-    if (!formData.selectedDate || !formData.selectedSlot) {
-      router.push('/schedule');
-    }
-  }, [formData.selectedDate, formData.selectedSlot, navigate]);
+  if (!formData.selectedDate || !formData.selectedSlot) router.push('/schedule');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [formData.selectedDate, formData.selectedSlot]);
 
   const location = mockLocations.find((loc) => loc.id === formData.locationId);
 

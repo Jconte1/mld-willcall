@@ -26,10 +26,9 @@ const ConfirmationPage: React.FC = () => {
 
   // Redirect if no form data
   useEffect(() => {
-    if (!formData.firstName || !formData.email) {
-      router.push('/details');
-    }
-  }, [formData, navigate]);
+  if (!formData.firstName || !formData.email) router.push('/details');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [formData.firstName, formData.email]);
 
   const location = mockLocations.find((loc) => loc.id === formData.locationId);
 
