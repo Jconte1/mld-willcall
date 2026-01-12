@@ -283,7 +283,7 @@ export default function StaffPickupsPage() {
   // In day view, allow empty days without snapping to the first appointment date.
 
   const timeLabels = useMemo(() => {
-    const labels = [];
+    const labels: { minutes: number; label: string }[] = [];
     for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60; minutes += 60) {
       labels.push({ minutes, label: minutesToLabel(minutes) });
     }
@@ -291,7 +291,7 @@ export default function StaffPickupsPage() {
   }, []);
 
   const timeOptions = useMemo(() => {
-    const options = [];
+    const options: string[] = [];
     for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60; minutes += SLOT_MINUTES) {
       options.push(minutesToLabel(minutes));
     }
@@ -299,7 +299,7 @@ export default function StaffPickupsPage() {
   }, []);
 
   const dateOptions = useMemo(() => {
-    const options = [];
+    const options: string[] = [];
     const today = new Date();
     for (let i = 0; i <= 60; i += 1) {
       options.push(format(addDays(today, i), "MM/dd/yyyy"));
