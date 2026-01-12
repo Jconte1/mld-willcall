@@ -1,0 +1,797 @@
+"use client";
+
+import React, { useMemo, useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { pickupLocations } from "@/lib/pickupLocations";
+import { cn } from "@/lib/utils";
+
+type AppointmentStatus =
+  | "Scheduled"
+  | "Confirmed"
+  | "InProgress"
+  | "Ready"
+  | "Completed"
+  | "Cancelled"
+  | "NoShow";
+
+type StaffPickup = {
+  id: string;
+  pickupReference: string;
+  locationId: string;
+  startAt: string;
+  endAt: string;
+  status: AppointmentStatus;
+  customerFirstName: string;
+  customerLastName: string | null;
+  customerEmail: string;
+  customerPhone: string | null;
+  vehicleInfo: string | null;
+  customerNotes: string | null;
+  orders: { orderNbr: string }[];
+};
+
+type LayoutItem = StaffPickup & {
+  column: number;
+  columnCount: number;
+  top: number;
+  height: number;
+};
+
+const START_HOUR = 8;
+const END_HOUR = 17;
+const SLOT_MINUTES = 15;
+const SLOT_HEIGHT_WEEK = 64;
+const SLOT_HEIGHT_DAY = 72;
+
+const STATUS_STYLES: Record<AppointmentStatus, string> = {
+  Scheduled: "bg-primary/10 text-primary",
+  Confirmed: "bg-emerald-100 text-emerald-800",
+  InProgress: "bg-amber-100 text-amber-700",
+  Ready: "bg-indigo-100 text-indigo-700",
+  Completed: "bg-success/10 text-success",
+  Cancelled: "bg-destructive/10 text-destructive",
+  NoShow: "bg-muted text-muted-foreground",
+};
+
+function toMinutes(date: Date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function minutesToLabel(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const display = hours % 12 || 12;
+  return `${display}:${String(mins).padStart(2, "0")} ${suffix}`;
+}
+
+function toIsoLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d}T${hh}:${mm}:00`;
+}
+
+function toIsoLocalFromDateAndTime(dateStr: string, timeStr: string) {
+  const parsed = parse(`${dateStr} ${timeStr}`, "MM/dd/yyyy h:mm a", new Date());
+  if (Number.isNaN(parsed.getTime())) return "";
+  return toIsoLocal(parsed);
+}
+
+function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) {
+  const sorted = [...dayAppointments].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+  const groups: StaffPickup[][] = [];
+  let current: StaffPickup[] = [];
+  let groupEnd = -Infinity;
+
+  for (const apt of sorted) {
+    const start = new Date(apt.startAt).getTime();
+    const end = new Date(apt.endAt).getTime();
+    if (!current.length || start < groupEnd) {
+      current.push(apt);
+      groupEnd = Math.max(groupEnd, end);
+    } else {
+      groups.push(current);
+      current = [apt];
+      groupEnd = end;
+    }
+  }
+  if (current.length) groups.push(current);
+
+  const positioned: LayoutItem[] = [];
+
+  for (const group of groups) {
+    const columns: number[] = [];
+    const assignments = new Map<string, number>();
+
+    for (const apt of group) {
+      const start = new Date(apt.startAt).getTime();
+      let assigned = -1;
+      for (let i = 0; i < columns.length; i += 1) {
+        if (start >= columns[i]) {
+          assigned = i;
+          break;
+        }
+      }
+      if (assigned === -1) {
+        assigned = columns.length;
+        columns.push(0);
+      }
+      assignments.set(apt.id, assigned);
+      columns[assigned] = new Date(apt.endAt).getTime();
+    }
+
+    const columnCount = columns.length;
+    for (const apt of group) {
+      const start = new Date(apt.startAt);
+      const end = new Date(apt.endAt);
+      const startMinutes = Math.max(toMinutes(start), START_HOUR * 60);
+      const endMinutes = Math.min(toMinutes(end), END_HOUR * 60);
+      const duration = Math.max(endMinutes - startMinutes, SLOT_MINUTES);
+      positioned.push({
+        ...apt,
+        column: assignments.get(apt.id) ?? 0,
+        columnCount,
+        top: ((startMinutes - START_HOUR * 60) / SLOT_MINUTES) * slotHeight,
+        height: (duration / SLOT_MINUTES) * slotHeight,
+      });
+    }
+  }
+
+  return positioned;
+}
+
+export default function StaffPickupsPage() {
+  const { data: session } = useSession();
+  const [view, setView] = useState<"day" | "week">("week");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [appointments, setAppointments] = useState<StaffPickup[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [activeAppointment, setActiveAppointment] = useState<StaffPickup | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({
+    locationId: "",
+    customerEmail: "",
+    customerFirstName: "",
+    customerLastName: "",
+    customerPhone: "",
+    date: "",
+    startTime: "",
+    endTime: "",
+    status: "Scheduled" as AppointmentStatus,
+    orderNbrs: "",
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setView("day");
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const rangeStart = useMemo(() => {
+    return view === "week" ? startOfWeek(selectedDate, { weekStartsOn: 1 }) : selectedDate;
+  }, [selectedDate, view]);
+
+  const rangeEnd = useMemo(() => {
+    return view === "week" ? endOfWeek(selectedDate, { weekStartsOn: 1 }) : selectedDate;
+  }, [selectedDate, view]);
+
+  const slotHeight = view === "day" ? SLOT_HEIGHT_DAY : SLOT_HEIGHT_WEEK;
+
+  const calendarHeight = useMemo(() => {
+    return ((END_HOUR - START_HOUR) * 60) / SLOT_MINUTES * slotHeight;
+  }, [slotHeight]);
+
+  const timeLabelOffset = slotHeight * 0.5;
+
+  const visibleDays = useMemo(() => {
+    if (view === "day") return [selectedDate];
+    return Array.from({ length: 7 }, (_, idx) => addDays(rangeStart, idx));
+  }, [rangeStart, selectedDate, view]);
+
+  const accessibleLocations = useMemo(() => {
+    if (session?.user?.role === "ADMIN") {
+      return pickupLocations.map((loc) => loc.id);
+    }
+    const locationAccess = session?.user?.locationAccess ?? [];
+    if (!locationAccess.length) return [];
+    return locationAccess;
+  }, [session?.user?.locationAccess, session?.user?.role]);
+
+  useEffect(() => {
+    if (!selectedLocations.length && accessibleLocations.length) {
+      setSelectedLocations(accessibleLocations);
+    }
+  }, [accessibleLocations, selectedLocations.length]);
+
+  const fetchAppointments = async () => {
+    if (!session?.user?.role) return;
+    setLoading(true);
+    setError("");
+
+    const params = new URLSearchParams({
+      from: format(rangeStart, "yyyy-MM-dd"),
+      to: format(rangeEnd, "yyyy-MM-dd"),
+    });
+    if (selectedLocations.length === 1) {
+      params.set("locationId", selectedLocations[0]);
+    }
+
+    const res = await fetch(`/api/staff/pickups?${params.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    console.info("[staff-pickups] fetch", {
+      ok: res.ok,
+      status: res.status,
+      rangeStart: format(rangeStart, "yyyy-MM-dd"),
+      rangeEnd: format(rangeEnd, "yyyy-MM-dd"),
+      selectedLocations,
+      received: Array.isArray(data?.pickups) ? data.pickups.length : 0,
+    });
+    if (!res.ok) {
+      setError(data?.message ?? "Unable to load pickups.");
+      setLoading(false);
+      return;
+    }
+
+    const rows = Array.isArray(data?.pickups) ? data.pickups : [];
+    setAppointments(rows);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
+
+  const filteredAppointments = useMemo(() => {
+    if (!selectedLocations.length) return appointments;
+    return appointments.filter((apt) => selectedLocations.includes(apt.locationId));
+  }, [appointments, selectedLocations]);
+
+  const appointmentsByDay = useMemo(() => {
+    const map = new Map<string, StaffPickup[]>();
+    filteredAppointments.forEach((apt) => {
+      const dateKey = format(parseISO(apt.startAt), "yyyy-MM-dd");
+      const list = map.get(dateKey) ?? [];
+      list.push(apt);
+      map.set(dateKey, list);
+    });
+    return map;
+  }, [filteredAppointments]);
+
+  // In day view, allow empty days without snapping to the first appointment date.
+
+  const timeLabels = useMemo(() => {
+    const labels = [];
+    for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60; minutes += 60) {
+      labels.push({ minutes, label: minutesToLabel(minutes) });
+    }
+    return labels;
+  }, []);
+
+  const timeOptions = useMemo(() => {
+    const options = [];
+    for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60; minutes += SLOT_MINUTES) {
+      options.push(minutesToLabel(minutes));
+    }
+    return options;
+  }, []);
+
+  const dateOptions = useMemo(() => {
+    const options = [];
+    const today = new Date();
+    for (let i = 0; i <= 60; i += 1) {
+      options.push(format(addDays(today, i), "MM/dd/yyyy"));
+    }
+    if (formData.date && !options.includes(formData.date)) {
+      options.unshift(formData.date);
+    }
+    return options;
+  }, [formData.date]);
+
+  const handleOpenEdit = (appointment: StaffPickup) => {
+    setActiveAppointment(appointment);
+    setIsCreating(false);
+    const startDate = parseISO(appointment.startAt);
+    const endDate = parseISO(appointment.endAt);
+    setFormData({
+      locationId: appointment.locationId,
+      customerEmail: appointment.customerEmail,
+      customerFirstName: appointment.customerFirstName,
+      customerLastName: appointment.customerLastName ?? "",
+      customerPhone: appointment.customerPhone ?? "",
+      date: format(startDate, "MM/dd/yyyy"),
+      startTime: format(startDate, "h:mm a"),
+      endTime: format(endDate, "h:mm a"),
+      status: appointment.status,
+      orderNbrs: appointment.orders.map((o) => o.orderNbr).join(", "),
+    });
+    setDialogOpen(true);
+  };
+
+  const handleOpenCreate = () => {
+    setActiveAppointment(null);
+    setIsCreating(true);
+    const start = toIsoLocal(selectedDate);
+    const end = toIsoLocal(new Date(selectedDate.getTime() + 30 * 60_000));
+    const startDate = parseISO(start);
+    const endDate = parseISO(end);
+    setFormData({
+      locationId: selectedLocations[0] ?? "",
+      customerEmail: "",
+      customerFirstName: "",
+      customerLastName: "",
+      customerPhone: "",
+      date: format(startDate, "MM/dd/yyyy"),
+      startTime: format(startDate, "h:mm a"),
+      endTime: format(endDate, "h:mm a"),
+      status: "Scheduled",
+      orderNbrs: "",
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSaveAppointment = async () => {
+    const startAt = toIsoLocalFromDateAndTime(formData.date, formData.startTime);
+    const endAt = toIsoLocalFromDateAndTime(formData.date, formData.endTime);
+    const payload = {
+      locationId: formData.locationId,
+      customerEmail: formData.customerEmail,
+      customerFirstName: formData.customerFirstName,
+      customerLastName: formData.customerLastName || undefined,
+      customerPhone: formData.customerPhone || undefined,
+      startAt,
+      endAt,
+      status: formData.status,
+      orderNbrs: formData.orderNbrs
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    if (isCreating) {
+      const res = await fetch("/api/staff/pickups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setDialogOpen(false);
+        fetchAppointments();
+      } else {
+        setError("Unable to create appointment.");
+      }
+      return;
+    }
+
+    if (!activeAppointment) return;
+    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: payload.status,
+        startAt: payload.startAt,
+        endAt: payload.endAt,
+        locationId: payload.locationId,
+        customerFirstName: payload.customerFirstName,
+        customerLastName: payload.customerLastName ?? null,
+        customerEmail: payload.customerEmail,
+        customerPhone: payload.customerPhone ?? null,
+        orderNbrs: payload.orderNbrs,
+      }),
+    });
+    if (res.ok) {
+      setDialogOpen(false);
+      fetchAppointments();
+    } else {
+      setError("Unable to update appointment.");
+    }
+  };
+
+  const handleDragDrop = async (event: React.DragEvent<HTMLDivElement>, day: Date) => {
+    event.preventDefault();
+    const appointmentId = event.dataTransfer.getData("text/plain");
+    const appointment = appointments.find((apt) => apt.id === appointmentId);
+    if (!appointment) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = Math.max(0, event.clientY - rect.top);
+    const minutesOffset = Math.floor(offsetY / slotHeight) * SLOT_MINUTES;
+    const startMinutes = Math.min(START_HOUR * 60 + minutesOffset, END_HOUR * 60 - SLOT_MINUTES);
+
+    const duration = (new Date(appointment.endAt).getTime() - new Date(appointment.startAt).getTime()) / 60000;
+
+    const start = new Date(day);
+    start.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+    const end = new Date(start.getTime() + duration * 60_000);
+
+    await fetch(`/api/staff/pickups/${appointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+      }),
+    });
+    fetchAppointments();
+  };
+
+  const renderAppointments = (day: Date) => {
+    const dateKey = format(day, "yyyy-MM-dd");
+    const dayAppointments = appointmentsByDay.get(dateKey) ?? [];
+    const layout = layoutAppointments(dayAppointments, slotHeight);
+
+    return (
+      <div
+        className="relative border border-border/60 bg-background"
+        style={{ height: calendarHeight }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => handleDragDrop(event, day)}
+      >
+        {layout.map((apt) => {
+          const width = 100 / apt.columnCount;
+          const left = width * apt.column;
+          const isCompact = apt.height < 36;
+          const showTime = apt.height >= 32;
+          const showOrders = apt.height >= 52;
+          const isWeek = view === "week";
+          return (
+            <div
+              key={apt.id}
+              draggable
+              onDragStart={(event) => event.dataTransfer.setData("text/plain", apt.id)}
+              onClick={() => handleOpenEdit(apt)}
+              className={cn(
+                "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden",
+                isCompact ? "p-1" : "p-2",
+                "bg-card hover:shadow-md transition-shadow"
+              )}
+              style={{
+                top: apt.top,
+                height: apt.height,
+                left: `${left}%`,
+                width: `${width}%`,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    `rounded-full ${STATUS_STYLES[apt.status]}`,
+                    isWeek ? "px-1.5 py-0.5 text-[9px] leading-none" : "px-2 py-0.5 text-[10px]"
+                  )}
+                >
+                  {apt.status}
+                </span>
+                <span className={cn("font-semibold truncate", isWeek ? "text-[11px]" : "text-xs")}>
+                  {apt.customerFirstName} {apt.customerLastName}
+                </span>
+              </div>
+              {showTime ? (
+                <div className={cn("mt-1 text-muted-foreground", isWeek ? "text-[10px] leading-tight" : "text-[11px]")}>
+                  {format(parseISO(apt.startAt), "h:mm a")} - {format(parseISO(apt.endAt), "h:mm a")}
+                </div>
+              ) : null}
+              {showOrders ? (
+                <div className={cn("mt-1 text-muted-foreground truncate", isWeek ? "text-[10px] leading-tight" : "text-[11px]")}>
+                  {apt.orders.map((o) => o.orderNbr).join(", ")}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="shadow-xl">
+        <CardHeader className="border-b">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Pickups Calendar
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {view === "week"
+                  ? `${format(rangeStart, "MMM d")} - ${format(rangeEnd, "MMM d")}`
+                  : format(selectedDate, "MMMM d, yyyy")}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Tabs value={view} onValueChange={(val) => setView(val as "day" | "week")}>
+                <TabsList>
+                  <TabsTrigger value="day">Day</TabsTrigger>
+                  <TabsTrigger value="week" className="hidden md:inline-flex">Week</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {view === "day" ? (
+                <Input
+                  type="date"
+                  value={format(selectedDate, "yyyy-MM-dd")}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (next) setSelectedDate(parseISO(next));
+                  }}
+                  className="w-[160px]"
+                />
+              ) : null}
+
+              <Button variant="hero" onClick={handleOpenCreate}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Appointment
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {accessibleLocations.length > 1 ? (
+            <div className="flex flex-wrap gap-2">
+              {accessibleLocations.map((locId) => {
+                const location = pickupLocations.find((loc) => loc.id === locId);
+                const active = selectedLocations.includes(locId);
+                return (
+                  <Button
+                    key={locId}
+                    variant={active ? "hero" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setSelectedLocations((prev) => {
+                        if (prev.length === 1 && prev[0] === locId) {
+                          return accessibleLocations;
+                        }
+                        return [locId];
+                      });
+                    }}
+                  >
+                    {location?.name ?? locId.toUpperCase()}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="text-center text-muted-foreground py-12">Loading pickups...</div>
+          ) : error ? (
+            <div className="text-center text-destructive py-12">{error}</div>
+          ) : (
+            <div className="grid grid-cols-[70px_1fr] gap-4">
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground opacity-0 mb-2">Spacer</div>
+                <div
+                  className="relative text-xs text-muted-foreground"
+                  style={{ height: calendarHeight + timeLabelOffset }}
+                >
+                  {timeLabels.map((label) => {
+                    const offset = ((label.minutes - START_HOUR * 60) / SLOT_MINUTES) * slotHeight;
+                    return (
+                      <div
+                        key={label.minutes}
+                        className="absolute -translate-y-1"
+                        style={{ top: offset + timeLabelOffset }}
+                      >
+                        {label.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={cn("grid gap-4", view === "week" ? "grid-cols-7" : "grid-cols-1")}>
+                {visibleDays.map((day) => (
+                  <div key={day.toISOString()} className="space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground">
+                      {format(day, "EEE, MMM d")}
+                      {isSameDay(day, new Date()) ? " - Today" : ""}
+                    </div>
+                    {renderAppointments(day)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{isCreating ? "Create Appointment" : "Edit Appointment"}</DialogTitle>
+            <DialogDescription>Update appointment details and orders.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Select
+                  value={formData.locationId}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, locationId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accessibleLocations.map((locId) => {
+                      const location = pickupLocations.find((loc) => loc.id === locId);
+                      return (
+                        <SelectItem key={locId} value={locId}>
+                          {location?.name ?? locId.toUpperCase()}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(STATUS_STYLES).map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Customer Email</Label>
+                <Input
+                  value={formData.customerEmail}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, customerEmail: event.target.value }))}
+                  placeholder="customer@email.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={formData.customerPhone}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, customerPhone: event.target.value }))}
+                  placeholder="(555) 555-5555"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>First Name</Label>
+                <Input
+                  value={formData.customerFirstName}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, customerFirstName: event.target.value }))}
+                  placeholder="First name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Last Name</Label>
+                <Input
+                  value={formData.customerLastName}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, customerLastName: event.target.value }))}
+                  placeholder="Last name"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input
+                list="pickup-date-options"
+                value={formData.date}
+                onChange={(event) => setFormData((prev) => ({ ...prev, date: event.target.value }))}
+                placeholder="MM/DD/YYYY"
+              />
+              <datalist id="pickup-date-options">
+                {dateOptions.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">MM/DD/YYYY</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Start Time</Label>
+                <Select
+                  value={formData.startTime}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select start time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timeOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>End Time</Label>
+                <Select
+                  value={formData.endTime}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select end time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timeOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Order Numbers (comma separated)</Label>
+              <Input
+                value={formData.orderNbrs}
+                onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
+                placeholder="C12345, C67890"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="hero" onClick={handleSaveAppointment}>
+              {isCreating ? "Create Appointment" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
