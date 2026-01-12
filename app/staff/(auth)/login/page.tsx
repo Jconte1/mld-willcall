@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { z } from "zod";
@@ -25,7 +25,7 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export default function StaffLoginPage() {
+function StaffLoginContent() {
   const router = useRouter();
   const params = useSearchParams();
   const { toast } = useToast();
@@ -115,5 +115,13 @@ export default function StaffLoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function StaffLoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <StaffLoginContent />
+    </Suspense>
   );
 }
