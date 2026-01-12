@@ -384,7 +384,7 @@ Reference: ${formData.pickupReference}`;
                     <Checkbox
                       checked={formData.smsOptIn}
                       onCheckedChange={(checked) =>
-                        updateFormData({ smsOptIn: Boolean(checked) })
+                        updateFormData({ smsOptIn: Boolean(checked) }) //
                       }
                       className="mt-0.5"
                     />
