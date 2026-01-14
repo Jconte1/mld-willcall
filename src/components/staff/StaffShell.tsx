@@ -41,7 +41,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="border-b bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/staff" className="font-semibold tracking-tight">
@@ -81,6 +81,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 </div>
                 <Button
                   variant="outline"
+                  className="bg-white"
                   onClick={() => signOut({ callbackUrl: "/staff/login" })}
                 >
                   Sign out

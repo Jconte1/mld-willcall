@@ -83,7 +83,6 @@ const ConfirmationPage: React.FC = () => {
           lastName: formData.lastName,
           phone: formData.phone,
           smsOptIn: formData.smsOptIn,
-          emailOptIn: formData.emailOptIn,
           vehicleInfo: formData.vehicleInfo,
           notes: formData.notes,
           groups: formData.appointmentGroups,
@@ -458,38 +457,21 @@ Reference: ${formData.pickupReference}`;
                   </div>
                 )}
                 <div className="rounded-lg border border-border/60 bg-background/80 p-3 text-sm space-y-3">
-                  <label className="flex items-start gap-3">
-                    <Checkbox
-                      checked={formData.smsOptIn}
-                      onCheckedChange={(checked) =>
-                        updateFormData({ smsOptIn: Boolean(checked) }) //
-                      }
-                      className="mt-0.5"
-                    />
-                    <span className="text-muted-foreground">
-                      Text appointment updates (optional)
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3">
-                    <Checkbox
-                      checked={formData.emailOptIn}
-                      onCheckedChange={(checked) =>
-                        updateFormData({ emailOptIn: Boolean(checked) })
-                      }
-                      className="mt-0.5"
-                    />
-                    <span className="text-muted-foreground">
-                      Email appointment updates (optional)
-                    </span>
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    If you don't enable notifications, you won't receive reminders or change alerts.
-                    You can still manage your appointment anytime at{" "}
-                    <a className="underline" href="/">
-                      mld-willcall
-                    </a>
-                    .
-                  </p>
+                    <label className="flex items-start gap-3">
+                      <Checkbox
+                        checked={formData.smsOptIn}
+                        onCheckedChange={(checked) =>
+                          updateFormData({ smsOptIn: Boolean(checked) }) //
+                        }
+                        className="mt-0.5"
+                      />
+                      <span className="text-muted-foreground">
+                        Text appointment updates (optional)
+                      </span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Email updates are always on. You can unsubscribe anytime from an email.
+                    </p>
                 </div>
               </div>
 

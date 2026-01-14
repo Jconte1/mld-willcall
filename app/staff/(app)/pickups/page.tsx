@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { pickupLocations } from "@/lib/pickupLocations";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,15 @@ const STATUS_STYLES: Record<AppointmentStatus, string> = {
   Cancelled: "bg-destructive/10 text-destructive",
   NoShow: "bg-muted text-muted-foreground",
 };
+const STATUS_OPTIONS: AppointmentStatus[] = [
+  "Scheduled",
+  "Confirmed",
+  "InProgress",
+  "Ready",
+  "Completed",
+  "NoShow",
+  "Cancelled",
+];
 
 function toMinutes(date: Date) {
   return date.getHours() * 60 + date.getMinutes();
@@ -157,6 +167,9 @@ export default function StaffPickupsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<AppointmentStatus[]>(() =>
+    STATUS_OPTIONS.filter((status) => status !== "Cancelled")
+  );
   const [activeAppointment, setActiveAppointment] = useState<StaffPickup | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
@@ -230,6 +243,21 @@ export default function StaffPickupsPage() {
     }
   }, [accessibleLocations, selectedLocations.length]);
 
+  const locationSelectValue = useMemo(() => {
+    if (accessibleLocations.length <= 1) return accessibleLocations[0] ?? "";
+    if (selectedLocations.length === accessibleLocations.length) return "all";
+    return selectedLocations[0] ?? "all";
+  }, [accessibleLocations, selectedLocations]);
+
+  const toggleStatus = (status: AppointmentStatus, nextValue: boolean) => {
+    setSelectedStatuses((prev) => {
+      if (nextValue) {
+        return prev.includes(status) ? prev : [...prev, status];
+      }
+      return prev.filter((item) => item !== status);
+    });
+  };
+
   const fetchAppointments = async () => {
     if (!session?.user?.role) return;
     setLoading(true);
@@ -269,9 +297,17 @@ export default function StaffPickupsPage() {
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
 
   const filteredAppointments = useMemo(() => {
-    if (!selectedLocations.length) return appointments;
-    return appointments.filter((apt) => selectedLocations.includes(apt.locationId));
-  }, [appointments, selectedLocations]);
+    let rows = appointments;
+    if (selectedLocations.length) {
+      rows = rows.filter((apt) => selectedLocations.includes(apt.locationId));
+    }
+    if (selectedStatuses.length) {
+      rows = rows.filter((apt) => selectedStatuses.includes(apt.status));
+    } else {
+      rows = [];
+    }
+    return rows;
+  }, [appointments, selectedLocations, selectedStatuses]);
 
   const appointmentsByDay = useMemo(() => {
     const map = new Map<string, StaffPickup[]>();
@@ -507,7 +543,7 @@ export default function StaffPickupsPage() {
 
     return (
       <div
-        className="relative border border-border/60 bg-background"
+        className="relative border border-border/60 bg-white"
         style={{ height: calendarHeight }}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => handleDragDrop(event, day)}
@@ -528,7 +564,7 @@ export default function StaffPickupsPage() {
               className={cn(
                 "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden",
                 isCompact ? "p-1" : "p-2",
-                "bg-card hover:shadow-md transition-shadow"
+                "bg-white hover:shadow-md transition-shadow"
               )}
               style={{
                 top: apt.top,
@@ -584,22 +620,22 @@ export default function StaffPickupsPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Tabs value={view} onValueChange={(val) => setView(val as "day" | "week")}>
-                <TabsList>
-                  <TabsTrigger value="day">Day</TabsTrigger>
-                  <TabsTrigger value="week" className="hidden md:inline-flex">Week</TabsTrigger>
-                </TabsList>
-              </Tabs>
+          <div className="flex flex-wrap items-center gap-3">
+            <Tabs value={view} onValueChange={(val) => setView(val as "day" | "week")}>
+              <TabsList className="bg-white">
+                <TabsTrigger value="day">Day</TabsTrigger>
+                <TabsTrigger value="week" className="hidden md:inline-flex">Week</TabsTrigger>
+              </TabsList>
+            </Tabs>
 
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+                <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-              </div>
+            </div>
 
               {view === "day" ? (
                 <Input
@@ -622,31 +658,61 @@ export default function StaffPickupsPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {accessibleLocations.length > 1 ? (
-            <div className="flex flex-wrap gap-2">
-              {accessibleLocations.map((locId) => {
-                const location = pickupLocations.find((loc) => loc.id === locId);
-                const active = selectedLocations.includes(locId);
-                return (
-                  <Button
-                    key={locId}
-                    variant={active ? "hero" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setSelectedLocations((prev) => {
-                        if (prev.length === 1 && prev[0] === locId) {
-                          return accessibleLocations;
-                        }
-                        return [locId];
-                      });
-                    }}
-                  >
-                    {location?.name ?? locId.toUpperCase()}
-                  </Button>
-                );
-              })}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <Label className="text-xs uppercase text-muted-foreground">Store</Label>
+              <Select
+                value={locationSelectValue}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  if (value === "all") {
+                    setSelectedLocations(accessibleLocations);
+                  } else {
+                    setSelectedLocations([value]);
+                  }
+                }}
+                disabled={accessibleLocations.length <= 1}
+              >
+                <SelectTrigger className="w-[240px] bg-white">
+                  <SelectValue placeholder="Select store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accessibleLocations.length > 1 ? (
+                    <SelectItem value="all">All locations</SelectItem>
+                  ) : null}
+                  {accessibleLocations.map((locId) => {
+                    const location = pickupLocations.find((loc) => loc.id === locId);
+                    return (
+                      <SelectItem key={locId} value={locId}>
+                        {location?.name ?? locId.toUpperCase()}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
-          ) : null}
+
+            <div className="space-y-2">
+              <Label className="text-xs uppercase text-muted-foreground">Status</Label>
+              <div className="flex flex-wrap gap-2">
+                {STATUS_OPTIONS.map((status) => {
+                  const checked = selectedStatuses.includes(status);
+                  return (
+                    <label
+                      key={status}
+                      className="flex items-center gap-2 rounded-md border border-border/60 bg-white px-3 py-1.5 text-xs"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) => toggleStatus(status, Boolean(value))}
+                      />
+                      <span>{status}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           {loading ? (
             <div className="text-center text-muted-foreground py-12">Loading pickups...</div>
