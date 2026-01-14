@@ -290,7 +290,7 @@ Reference: ${formData.pickupReference}`;
                   return (
                     <div
                       key={group.id}
-                      className="rounded-lg border border-border/60 bg-background/80 p-4 space-y-3"
+                      className="rounded-lg border border-border/60 bg-white p-4 space-y-3"
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex items-start gap-3">
@@ -322,7 +322,7 @@ Reference: ${formData.pickupReference}`;
                         </div>
                       </div>
                       {location?.instructions && (
-                        <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+                        <div className="p-4 rounded-lg bg-white border border-black/20">
                           <p className="text-sm font-medium text-accent-foreground mb-1">
                             Pickup Instructions
                           </p>
