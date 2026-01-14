@@ -200,15 +200,6 @@ export default function OrderDetailPage() {
     [detail]
   );
 
-  const statusVariant =
-    detail?.summary.fulfillmentStatus === "Complete"
-      ? "success"
-      : detail?.summary.fulfillmentStatus === "Partially Complete"
-      ? "warning"
-      : detail?.summary.fulfillmentStatus === "Cancelled"
-      ? "destructive"
-      : "secondary";
-
   const formatAppointmentTime = (startAt: string, endAt: string) => {
     const start = new Date(startAt);
     const end = new Date(endAt);
@@ -351,7 +342,7 @@ export default function OrderDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       <Header />
 
       <main className="container py-8 md:py-12">
@@ -360,9 +351,6 @@ export default function OrderDetailPage() {
             <Button variant="ghost" onClick={() => router.push("/")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to scheduling
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/">Back to order selection</Link>
             </Button>
           </div>
 
@@ -384,7 +372,6 @@ export default function OrderDetailPage() {
                 <CardHeader>
                   <CardTitle className="flex flex-wrap items-center gap-3">
                     <span className="text-2xl font-bold">Order {detail.summary.orderNbr}</span>
-                    <Badge variant={statusVariant as any}>{detail.summary.fulfillmentStatus}</Badge>
                     {detail.summary.paymentStatus ? (
                       <Badge variant="outline">{detail.summary.paymentStatus}</Badge>
                     ) : null}
@@ -429,12 +416,6 @@ export default function OrderDetailPage() {
                       </div>
                       <div>
                         Customer: <span className="font-medium">{formatText(detail.summary.customerName)}</span>
-                      </div>
-                      <div>
-                        Lines:{" "}
-                        <span className="font-medium">
-                          {detail.summary.lineSummary.closedLines}/{detail.summary.lineSummary.totalLines}
-                        </span>
                       </div>
                     </div>
                   </div>

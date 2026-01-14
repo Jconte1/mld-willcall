@@ -18,25 +18,15 @@ export async function GET(req: Request) {
   });
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { message: "Invalid query", issues: parsed.error.issues },
-      { status: 400 }
-    );
+    return NextResponse.json({ message: "Invalid query parameters" }, { status: 400 });
   }
 
   if (!CUSTOMER_API_BASE_URL) {
-    return NextResponse.json(
-      { message: "Customer backend not configured" },
-      { status: 501 }
-    );
+    return NextResponse.json({ message: "Customer backend not configured" }, { status: 501 });
   }
 
   const params = new URLSearchParams(parsed.data);
-  const res = await fetch(
-    `${CUSTOMER_API_BASE_URL}/api/customer/pickups/availability?${params.toString()}`,
-    { method: "GET" }
-  );
-
+  const res = await fetch(`${CUSTOMER_API_BASE_URL}/api/customer/pickups/availability?${params.toString()}`);
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }

@@ -49,6 +49,7 @@ type OrderSummaryRow = {
     openLines: number;
     closedLines: number;
   };
+  isPickupReady: boolean;
   appointment: {
     id: string;
     status: string;
@@ -58,6 +59,8 @@ type OrderSummaryRow = {
     orderNbrs: string[];
   } | null;
 };
+
+const ORDER_PREVIEW_LIMIT = 5;
 
 const Index: React.FC = () => {
   const router = useRouter();
@@ -82,6 +85,8 @@ const Index: React.FC = () => {
   const [cancelSelectedOrders, setCancelSelectedOrders] = useState<string[]>([]);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelError, setCancelError] = useState("");
+
+  const [visibleOrderCount, setVisibleOrderCount] = useState(ORDER_PREVIEW_LIMIT);
 
   useEffect(() => {
     // If a staff member lands on the customer home, send them to staff.
@@ -164,6 +169,28 @@ const Index: React.FC = () => {
     });
   }, [orders, orderQuery]);
 
+  useEffect(() => {
+    setVisibleOrderCount(ORDER_PREVIEW_LIMIT);
+  }, [orderQuery, orders.length]);
+
+  const visibleOrders = useMemo(
+    () => filteredOrders.slice(0, visibleOrderCount),
+    [filteredOrders, visibleOrderCount]
+  );
+  const remainingOrders = Math.max(filteredOrders.length - visibleOrderCount, 0);
+
+  const handleOrderCardClick = (
+    event: React.MouseEvent<HTMLDivElement>,
+    orderNbr: string,
+    isScheduled: boolean,
+    isPickupReady: boolean
+  ) => {
+    if (isScheduled || !isPickupReady) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button,a,input,label")) return;
+    toggleOrder(orderNbr);
+  };
+
   const toggleOrder = (orderNbr: string) => {
     setSelectedOrders((prev) => {
       if (prev.includes(orderNbr)) {
@@ -182,7 +209,7 @@ const Index: React.FC = () => {
     setSelectedOrders((prev) =>
       prev.filter((orderNbr) => {
         const order = orders.find((o) => o.orderNbr === orderNbr);
-        return !order?.appointment;
+        return !order?.appointment && order?.isPickupReady !== false;
       })
     );
   }, [orders]);
@@ -248,6 +275,10 @@ const Index: React.FC = () => {
       return;
     }
 
+    const filteredSelections = formData.selectedItems.filter((selection) =>
+      selectedOrders.includes(selection.orderNbr)
+    );
+
     updateFormData({
       pickupReference: selectedOrders.join(", "),
       appointmentGroups: selectedLocationState.groups.map((group) => ({
@@ -258,10 +289,12 @@ const Index: React.FC = () => {
         selectedDate: "",
         selectedSlots: [],
       })),
+      selectedItems: filteredSelections,
     });
 
-    router.push("/schedule");
+    router.push("/items");
   };
+
 
   const formatAppointmentTime = (startAt: string, endAt: string) => {
     const start = new Date(startAt);
@@ -364,8 +397,9 @@ const Index: React.FC = () => {
           selectedSlots: [],
         },
       ],
+      selectedItems: [],
     });
-    router.push("/schedule");
+    router.push("/items");
   };
 
   const features: Feature[] = useMemo(
@@ -455,6 +489,11 @@ const Index: React.FC = () => {
                     </span>
                   </div>
 
+                  <Button variant="hero" size="lg" className="w-full mb-4" onClick={handleContinue}>
+                    Find Available Times
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+
                   {ordersError ? (
                     <div className="space-y-2">
                       <p className="text-sm text-destructive">{ordersError}</p>
@@ -476,7 +515,7 @@ const Index: React.FC = () => {
                     <p className="text-sm text-muted-foreground">No matching orders found.</p>
                   ) : (
                     <div className="space-y-3">
-                      {filteredOrders.map((order) => {
+                      {visibleOrders.map((order) => {
                         const checked = selectedOrders.includes(order.orderNbr);
                         const deliveryDate = order.deliveryDate
                           ? new Date(order.deliveryDate)
@@ -485,6 +524,7 @@ const Index: React.FC = () => {
                           ? deliveryDate.toLocaleDateString()
                           : "No delivery date";
                         const isScheduled = Boolean(order.appointment);
+                        const isPickupReady = order.isPickupReady !== false;
                         const { locationIds, unknownWarehouses } = resolvePickupLocationIds(
                           order.warehouses
                         );
@@ -498,49 +538,69 @@ const Index: React.FC = () => {
                             ? "No pickup location"
                             : "No pickup location";
 
-                        const statusVariant =
-                          order.fulfillmentStatus === "Complete"
-                            ? "success"
-                          : order.fulfillmentStatus === "Partially Complete"
-                          ? "warning"
-                            : order.fulfillmentStatus === "Cancelled"
-                            ? "destructive"
-                            : "secondary";
-
                         return (
                           <div
                             key={order.id}
-                            className="flex items-start gap-4 rounded-xl border border-border/60 bg-background p-4 transition hover:border-border"
+                            className="flex items-start gap-4 rounded-xl border border-border/60 bg-white p-4 transition hover:border-border cursor-pointer"
+                            onClick={(event) =>
+                              handleOrderCardClick(
+                                event,
+                                order.orderNbr,
+                                isScheduled,
+                                isPickupReady
+                              )
+                            }
                           >
                             <Checkbox
                               checked={checked}
                               onCheckedChange={() => toggleOrder(order.orderNbr)}
                               className="mt-1"
-                              disabled={isScheduled}
+                              disabled={isScheduled || !isPickupReady}
                             />
                             <div className="flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-foreground">
-                                  {order.orderNbr}
-                                </span>
-                                <Badge variant={statusVariant as any}>
-                                  {order.fulfillmentStatus}
-                                </Badge>
-                                {order.paymentStatus ? (
-                                  <Badge variant="outline">{order.paymentStatus}</Badge>
-                                ) : null}
-                                {isScheduled && order.appointment ? (
-                                  <Badge variant="outline">
-                                    {order.appointment.status}
-                                  </Badge>
-                                ) : null}
-                                <Button variant="hero" size="sm" asChild>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold text-foreground">
+                                    {order.orderNbr}
+                                  </span>
+                                  {!isPickupReady ? (
+                                    <Badge variant="destructive">Not Ready</Badge>
+                                  ) : null}
+                                  {order.paymentStatus ? (
+                                    <Badge variant="outline">{order.paymentStatus}</Badge>
+                                  ) : null}
+                                  {isScheduled && order.appointment ? (
+                                    <Badge variant="outline">
+                                      {order.appointment.status}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="bg-white hover:bg-white"
+                                  asChild
+                                >
                                   <Link href={`/orders/${order.orderNbr}`}>View Order</Link>
                                 </Button>
-                                {isScheduled && order.appointment ? (
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {order.jobName || order.customerName}
+                              </div>
+                              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                <span>Type: {order.orderType}</span>
+                                <span>Status: {order.status}</span>
+                                <span>Delivery: {dateLabel}</span>
+                                <span>Pickup: {locationLabel}</span>
+                              </div>
+                              {isScheduled && order.appointment ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <div className="text-sm font-semibold text-primary">
+                                    {formatAppointmentTime(order.appointment.startAt, order.appointment.endAt)}
+                                  </div>
                                   <div className="flex flex-wrap gap-2">
                                     <Button
-                                      variant="outline"
+                                      variant="hero"
                                       size="sm"
                                       onClick={() => handleReschedule(order.appointment)}
                                     >
@@ -549,33 +609,30 @@ const Index: React.FC = () => {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="text-[#d24f39] font-semibold hover:text-[#d24f39] hover:bg-transparent"
+                                      className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
                                       onClick={() => openCancelDialog(order.appointment!, order.orderNbr)}
                                     >
                                       Cancel
                                     </Button>
                                   </div>
-                                ) : null}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {order.jobName || order.customerName}
-                              </div>
-                              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                                <span>Type: {order.orderType}</span>
-                                <span>Status: {order.status}</span>
-                                <span>Lines: {order.lineSummary.closedLines}/{order.lineSummary.totalLines}</span>
-                                <span>Delivery: {dateLabel}</span>
-                                <span>Pickup: {locationLabel}</span>
-                              </div>
-                              {isScheduled && order.appointment ? (
-                                <div className="text-xs font-semibold text-primary">
-                                  {formatAppointmentTime(order.appointment.startAt, order.appointment.endAt)}
                                 </div>
                               ) : null}
                             </div>
                           </div>
                         );
                       })}
+                      {remainingOrders > 0 ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() =>
+                            setVisibleOrderCount((prev) => prev + ORDER_PREVIEW_LIMIT)
+                          }
+                        >
+                          Show more orders (+{remainingOrders})
+                        </Button>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -737,3 +794,4 @@ const Index: React.FC = () => {
 };
 
 export default Index;
+

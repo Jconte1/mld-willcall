@@ -14,9 +14,10 @@ import { pickupLocations } from '@/lib/pickupLocations';
 
 const steps = [
   { id: 1, name: 'Location' },
-  { id: 2, name: 'Date & Time' },
-  { id: 3, name: 'Details' },
-  { id: 4, name: 'Confirm' },
+  { id: 2, name: 'Item Selection' },
+  { id: 3, name: 'Date & Time' },
+  { id: 4, name: 'Details' },
+  { id: 5, name: 'Confirm' },
 ];
 
 const DetailsPage: React.FC = () => {
@@ -35,6 +36,10 @@ const DetailsPage: React.FC = () => {
 
   // Redirect if no date/slot selected
   useEffect(() => {
+    if (formData.selectedItems.length === 0) {
+      router.push('/items');
+      return;
+    }
     const ready =
       appointmentGroups.length > 0 &&
       appointmentGroups.every(
@@ -42,7 +47,7 @@ const DetailsPage: React.FC = () => {
       );
     if (!ready) router.push('/schedule');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointmentGroups.length]);
+  }, [appointmentGroups.length, formData.selectedItems.length]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -94,7 +99,7 @@ const DetailsPage: React.FC = () => {
       
       <main className="container py-8">
         <div className="max-w-2xl mx-auto">
-          <ProgressSteps steps={steps} currentStep={3} />
+          <ProgressSteps steps={steps} currentStep={4} />
 
           {/* Appointment Summary */}
           <Card className="mb-6 bg-secondary/30 border-dashed animate-fade-in">

@@ -76,18 +76,13 @@ function minutesToLabel(minutes: number) {
 }
 
 function toIsoLocal(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${d}T${hh}:${mm}:00`;
+  return date.toISOString();
 }
 
 function toIsoLocalFromDateAndTime(dateStr: string, timeStr: string) {
   const parsed = parse(`${dateStr} ${timeStr}`, "MM/dd/yyyy h:mm a", new Date());
   if (Number.isNaN(parsed.getTime())) return "";
-  return toIsoLocal(parsed);
+  return parsed.toISOString();
 }
 
 function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) {
@@ -164,6 +159,15 @@ export default function StaffPickupsPage() {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [activeAppointment, setActiveAppointment] = useState<StaffPickup | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
+  const [cancelReason, setCancelReason] = useState("");
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    id: string;
+    body: Record<string, any>;
+    orderNbrs: string[];
+    status: AppointmentStatus;
+  } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
     locationId: "",
@@ -310,6 +314,51 @@ export default function StaffPickupsPage() {
     return options;
   }, [formData.date]);
 
+  const normalizeOrderNbrs = (value: string) =>
+    value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const hasNotifiableChange = (appointment: StaffPickup, payload: Record<string, any>, orderNbrs: string[]) => {
+    const timeChanged =
+      payload.startAt &&
+      payload.endAt &&
+      (new Date(payload.startAt).getTime() !== new Date(appointment.startAt).getTime() ||
+        new Date(payload.endAt).getTime() !== new Date(appointment.endAt).getTime());
+    const locationChanged = payload.locationId && payload.locationId !== appointment.locationId;
+    const statusChanged = payload.status && payload.status !== appointment.status;
+    const existingOrders = appointment.orders.map((o) => o.orderNbr);
+    const orderChanged =
+      orderNbrs.length !== existingOrders.length ||
+      orderNbrs.some((nbr) => !existingOrders.includes(nbr));
+    return timeChanged || locationChanged || statusChanged || orderChanged;
+  };
+
+  const submitUpdate = async (
+    appointmentId: string,
+    body: Record<string, any>,
+    notify: boolean,
+    reason: string
+  ) => {
+    const res = await fetch(`/api/staff/pickups/${appointmentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...body,
+        notifyCustomer: notify,
+        cancelReason: reason || undefined,
+      }),
+    });
+    if (res.ok) {
+      setDialogOpen(false);
+      fetchAppointments();
+    } else {
+      setError("Unable to update appointment.");
+    }
+    return res.ok;
+  };
+
   const handleOpenEdit = (appointment: StaffPickup) => {
     setActiveAppointment(appointment);
     setIsCreating(false);
@@ -355,6 +404,7 @@ export default function StaffPickupsPage() {
   const handleSaveAppointment = async () => {
     const startAt = toIsoLocalFromDateAndTime(formData.date, formData.startTime);
     const endAt = toIsoLocalFromDateAndTime(formData.date, formData.endTime);
+    const orderNbrs = normalizeOrderNbrs(formData.orderNbrs);
     const payload = {
       locationId: formData.locationId,
       customerEmail: formData.customerEmail,
@@ -364,10 +414,7 @@ export default function StaffPickupsPage() {
       startAt,
       endAt,
       status: formData.status,
-      orderNbrs: formData.orderNbrs
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      orderNbrs,
     };
 
     if (isCreating) {
@@ -386,27 +433,33 @@ export default function StaffPickupsPage() {
     }
 
     if (!activeAppointment) return;
-    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status: payload.status,
-        startAt: payload.startAt,
-        endAt: payload.endAt,
-        locationId: payload.locationId,
-        customerFirstName: payload.customerFirstName,
-        customerLastName: payload.customerLastName ?? null,
-        customerEmail: payload.customerEmail,
-        customerPhone: payload.customerPhone ?? null,
-        orderNbrs: payload.orderNbrs,
-      }),
-    });
-    if (res.ok) {
+    const updateBody = {
+      status: payload.status,
+      startAt: payload.startAt,
+      endAt: payload.endAt,
+      locationId: payload.locationId,
+      customerFirstName: payload.customerFirstName,
+      customerLastName: payload.customerLastName ?? null,
+      customerEmail: payload.customerEmail,
+      customerPhone: payload.customerPhone ?? null,
+      orderNbrs: payload.orderNbrs,
+    };
+
+    if (hasNotifiableChange(activeAppointment, updateBody, orderNbrs)) {
+      setPendingUpdate({
+        id: activeAppointment.id,
+        body: updateBody,
+        orderNbrs,
+        status: formData.status,
+      });
+      setNotifyCustomer(true);
+      setCancelReason("");
       setDialogOpen(false);
-      fetchAppointments();
-    } else {
-      setError("Unable to update appointment.");
+      setNotifyDialogOpen(true);
+      return;
     }
+
+    await submitUpdate(activeAppointment.id, updateBody, false, "");
   };
 
   const handleDragDrop = async (event: React.DragEvent<HTMLDivElement>, day: Date) => {
@@ -426,15 +479,25 @@ export default function StaffPickupsPage() {
     start.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
     const end = new Date(start.getTime() + duration * 60_000);
 
-    await fetch(`/api/staff/pickups/${appointment.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        startAt: start.toISOString(),
-        endAt: end.toISOString(),
-      }),
-    });
-    fetchAppointments();
+    const updateBody = {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    };
+
+    if (hasNotifiableChange(appointment, updateBody, appointment.orders.map((o) => o.orderNbr))) {
+      setPendingUpdate({
+        id: appointment.id,
+        body: updateBody,
+        orderNbrs: appointment.orders.map((o) => o.orderNbr),
+        status: appointment.status,
+      });
+      setNotifyCustomer(true);
+      setCancelReason("");
+      setNotifyDialogOpen(true);
+      return;
+    }
+
+    await submitUpdate(appointment.id, updateBody, false, "");
   };
 
   const renderAppointments = (day: Date) => {
@@ -788,6 +851,74 @@ export default function StaffPickupsPage() {
             </Button>
             <Button variant="hero" onClick={handleSaveAppointment}>
               {isCreating ? "Create Appointment" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={notifyDialogOpen} onOpenChange={setNotifyDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send customer notification?</DialogTitle>
+            <DialogDescription>
+              This change affects time, location, status, or orders.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={notifyCustomer}
+                onChange={(event) => setNotifyCustomer(event.target.checked)}
+                className="mt-1"
+              />
+              <span>Notify customer about this update.</span>
+            </label>
+
+            {pendingUpdate?.status === "Cancelled" && notifyCustomer ? (
+              <div className="space-y-2">
+                <Label>Cancellation reason (required to notify)</Label>
+                <Input
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  placeholder="Reason for cancellation"
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setNotifyDialogOpen(false);
+                setPendingUpdate(null);
+                setCancelReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              onClick={async () => {
+                if (!pendingUpdate) return;
+                if (pendingUpdate.status === "Cancelled" && notifyCustomer && !cancelReason.trim()) {
+                  setError("Cancellation reason is required to notify the customer.");
+                  return;
+                }
+                await submitUpdate(
+                  pendingUpdate.id,
+                  pendingUpdate.body,
+                  notifyCustomer,
+                  cancelReason.trim()
+                );
+                setNotifyDialogOpen(false);
+                setPendingUpdate(null);
+                setCancelReason("");
+              }}
+            >
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -14,6 +14,7 @@ interface PickupContextType {
 const initialFormData: PickupFormData = {
   pickupReference: '',
   appointmentGroups: [],
+  selectedItems: [],
   firstName: '',
   lastName: '',
   email: '',

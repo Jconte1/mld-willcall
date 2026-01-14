@@ -6,6 +6,7 @@ const CUSTOMER_API_BASE_URL = process.env.CUSTOMER_API_BASE_URL;
 const schema = z.object({
   userId: z.string().min(1),
   email: z.string().email(),
+  suppressNotifications: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

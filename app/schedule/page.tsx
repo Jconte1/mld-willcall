@@ -15,9 +15,10 @@ import { AppointmentGroup, DayAvailability } from '@/lib/types';
 
 const steps = [
   { id: 1, name: 'Location' },
-  { id: 2, name: 'Date & Time' },
-  { id: 3, name: 'Details' },
-  { id: 4, name: 'Confirm' },
+  { id: 2, name: 'Item Selection' },
+  { id: 3, name: 'Date & Time' },
+  { id: 4, name: 'Details' },
+  { id: 5, name: 'Confirm' },
 ];
 
 const SCHEDULE_DAYS = 30;
@@ -37,9 +38,13 @@ const SchedulePage: React.FC = () => {
   useEffect(() => {
     if (!formData.pickupReference || formData.appointmentGroups.length === 0) {
       router.push('/');
+      return;
+    }
+    if (formData.selectedItems.length === 0) {
+      router.push('/items');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.pickupReference, formData.appointmentGroups.length]);
+  }, [formData.pickupReference, formData.appointmentGroups.length, formData.selectedItems.length]);
 
   useEffect(() => {
     if (!groups.length) return;
@@ -115,7 +120,7 @@ const SchedulePage: React.FC = () => {
   };
 
   const handleBack = () => {
-    router.push('/');
+    router.push('/items');
   };
 
   const missingSelections = groups.some(
@@ -128,7 +133,7 @@ const SchedulePage: React.FC = () => {
 
       <main className="container py-8">
         <div className="max-w-4xl mx-auto">
-          <ProgressSteps steps={steps} currentStep={2} />
+          <ProgressSteps steps={steps} currentStep={3} />
 
           {/* Pickup Info Banner */}
           <div className="mb-6 p-4 rounded-lg bg-secondary/50 border border-border">

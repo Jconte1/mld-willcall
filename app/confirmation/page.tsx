@@ -15,9 +15,10 @@ import { useToast } from '@/hooks/use-toast';
 
 const steps = [
   { id: 1, name: 'Location' },
-  { id: 2, name: 'Date & Time' },
-  { id: 3, name: 'Details' },
-  { id: 4, name: 'Confirm' },
+  { id: 2, name: 'Item Selection' },
+  { id: 3, name: 'Date & Time' },
+  { id: 4, name: 'Details' },
+  { id: 5, name: 'Confirm' },
 ];
 
 const ConfirmationPage: React.FC = () => {
@@ -28,9 +29,17 @@ const ConfirmationPage: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [appointmentIds, setAppointmentIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [expandedItemOrders, setExpandedItemOrders] = useState<Set<string>>(new Set());
+
+  const ITEM_PREVIEW_LIMIT = 5;
 
   // Redirect if no form data
   useEffect(() => {
+    if (formData.selectedItems.length === 0) {
+      router.push('/items');
+      return;
+    }
     const ready =
       formData.firstName &&
       formData.email &&
@@ -40,7 +49,12 @@ const ConfirmationPage: React.FC = () => {
       );
     if (!ready) router.push('/details');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.firstName, formData.email, formData.appointmentGroups.length]);
+  }, [
+    formData.firstName,
+    formData.email,
+    formData.appointmentGroups.length,
+    formData.selectedItems.length,
+  ]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -195,6 +209,57 @@ Reference: ${formData.pickupReference}`;
     URL.revokeObjectURL(url);
   };
 
+  const handleCancelFromConfirmation = async () => {
+    const user = session?.user as any;
+    if (!user?.id || !user?.email) {
+      toast({ title: "Unable to cancel", description: "Missing account information." });
+      return;
+    }
+
+    if (appointmentIds.length === 0) {
+      toast({ title: "No appointments to cancel", description: "Please contact support." });
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      const results = await Promise.all(
+        appointmentIds.map(async (appointmentId) => {
+          const res = await fetch(`/api/customer/pickups/${appointmentId}/cancel`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: user.id,
+              email: user.email,
+              suppressNotifications: true,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.message ?? "Unable to cancel pickup.");
+          }
+          return data;
+        })
+      );
+
+      if (results.length) {
+        toast({
+          title: "Pickup cancelled",
+          description: "Your appointment has been cancelled.",
+        });
+      }
+      resetFormData();
+      router.push("/");
+    } catch (err: any) {
+      toast({
+        title: "Cancellation failed",
+        description: err?.message ?? "Please try again.",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-background">
@@ -273,6 +338,14 @@ Reference: ${formData.pickupReference}`;
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3 mt-8 justify-center animate-slide-up" style={{ animationDelay: '0.3s' }}>
+              <Button
+                variant="outline"
+                className="border-transparent bg-[#d9b45b] text-black hover:bg-[#caa44a]"
+                onClick={handleAddToCalendar}
+              >
+                <CalendarPlus className="h-5 w-5 mr-2" />
+                Add to Calendar
+              </Button>
               <Button variant="outline" onClick={handleCopyConfirmation}>
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Details
@@ -281,9 +354,14 @@ Reference: ${formData.pickupReference}`;
                 <Edit className="h-4 w-4 mr-2" />
                 Reschedule
               </Button>
-              <Button variant="ghost" className="text-destructive hover:text-destructive">
+              <Button
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={handleCancelFromConfirmation}
+                disabled={isCancelling}
+              >
                 <X className="h-4 w-4 mr-2" />
-                Cancel Pickup
+                {isCancelling ? "Cancelling..." : "Cancel Pickup"}
               </Button>
             </div>
 
@@ -304,7 +382,7 @@ Reference: ${formData.pickupReference}`;
       
       <main className="container py-8">
         <div className="max-w-2xl mx-auto">
-          <ProgressSteps steps={steps} currentStep={4} />
+          <ProgressSteps steps={steps} currentStep={5} />
 
           <Card className="shadow-xl animate-slide-up">
             <CardHeader className="border-b">
@@ -422,19 +500,79 @@ Reference: ${formData.pickupReference}`;
                 <span className="text-sm text-muted-foreground">Pickup Reference</span>
                 <span className="font-mono font-semibold">{formData.pickupReference}</span>
               </div>
+
+              {formData.selectedItems.length ? (
+                <div className="rounded-lg border border-border/60 bg-background/80 p-4 space-y-4">
+                  <div className="text-sm font-semibold text-foreground">Items to Pick Up</div>
+                  {formData.selectedItems.map((selection) => (
+                    <div key={selection.orderNbr} className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <span>Order {selection.orderNbr}</span>
+                        {selection.items.length > ITEM_PREVIEW_LIMIT ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-2 py-1 text-xs"
+                            onClick={() =>
+                              setExpandedItemOrders((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(selection.orderNbr)) {
+                                  next.delete(selection.orderNbr);
+                                } else {
+                                  next.add(selection.orderNbr);
+                                }
+                                return next;
+                              })
+                            }
+                          >
+                            {expandedItemOrders.has(selection.orderNbr)
+                              ? "Show fewer"
+                              : `Show all items (+${selection.items.length - ITEM_PREVIEW_LIMIT})`}
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {(expandedItemOrders.has(selection.orderNbr)
+                          ? selection.items
+                          : selection.items.slice(0, ITEM_PREVIEW_LIMIT)
+                        ).map((item) => (
+                          <div
+                            key={item.lineId}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2"
+                          >
+                            <div>
+                              <div className="font-medium text-foreground">
+                                {item.inventoryId ?? "Item"}
+                              </div>
+                              {item.description ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {item.description}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="text-sm font-medium text-foreground">
+                              Qty {item.qty}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
           {/* Navigation */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-8">
-            <Button variant="ghost" onClick={() => router.push('/details')}>
+            <Button
+              variant="outline"
+              className="border-transparent bg-[#d9b45b] text-black hover:bg-[#caa44a]"
+              onClick={() => router.push('/details')}
+            >
               Edit Details
             </Button>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="outline" onClick={handleAddToCalendar} disabled={isSubmitting}>
-                <CalendarPlus className="h-5 w-5 mr-2" />
-                Add to Calendar
-              </Button>
               <Button variant="hero" size="lg" onClick={handleConfirm} disabled={isSubmitting}>
                 <CheckCircle className="h-5 w-5 mr-2" />
                 {isSubmitting ? "Confirming..." : "Confirm Pickup"}

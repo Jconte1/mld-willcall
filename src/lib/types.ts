@@ -37,6 +37,20 @@ export interface AppointmentGroup {
   selectedSlots: TimeSlot[];
 }
 
+export interface SelectedItem {
+  lineId: string;
+  inventoryId: string | null;
+  description: string | null;
+  warehouse: string | null;
+  maxQty: number;
+  qty: number;
+}
+
+export interface OrderItemSelection {
+  orderNbr: string;
+  items: SelectedItem[];
+}
+
 export interface Appointment {
   id: string;
   pickupReference: string;
@@ -58,6 +72,7 @@ export interface Appointment {
 export interface PickupFormData {
   pickupReference: string;
   appointmentGroups: AppointmentGroup[];
+  selectedItems: OrderItemSelection[];
   firstName: string;
   lastName: string;
   email: string;
