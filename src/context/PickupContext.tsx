@@ -15,6 +15,7 @@ const initialFormData: PickupFormData = {
   pickupReference: '',
   appointmentGroups: [],
   selectedItems: [],
+  orderReadyToken: '',
   firstName: '',
   lastName: '',
   email: '',

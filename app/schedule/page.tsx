@@ -159,27 +159,29 @@ const SchedulePage: React.FC = () => {
 
               return (
                 <section key={group.id} className="space-y-4">
-                  <Card className="border-border/60 bg-background">
+                  <Card className="border-border/60 bg-secondary/30 border-dashed">
                     <CardContent className="p-4">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                          <MapPin className="h-4 w-4" />
-                          <span>Location</span>
+                      <div className="rounded-lg border border-border/60 bg-background/70 p-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="h-4 w-4" />
+                            <span>Location</span>
+                          </div>
+                          <div className="font-semibold text-foreground">
+                            {location?.name ?? "Pickup Location"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {group.orderNbrs.length} order{group.orderNbrs.length === 1 ? "" : "s"}
+                          </div>
                         </div>
-                        <div className="font-semibold text-foreground">
-                          {location?.name ?? "Pickup Location"}
+                        {location?.address && (
+                          <p className="mt-2 text-sm text-muted-foreground">{location.address}</p>
+                        )}
+                        <div className="mt-3 text-sm text-muted-foreground">
+                          {group.requiredSlots === 1
+                            ? "Select one 15-minute pickup window for this location."
+                            : "Select two 15-minute pickup windows for this location."}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {group.orderNbrs.length} order{group.orderNbrs.length === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                      {location?.address && (
-                        <p className="mt-2 text-sm text-muted-foreground">{location.address}</p>
-                      )}
-                      <div className="mt-3 text-sm text-muted-foreground">
-                        {group.requiredSlots === 1
-                          ? "Select one 15-minute pickup window for this location."
-                          : "Select two 15-minute pickup windows for this location."}
                       </div>
                     </CardContent>
                   </Card>

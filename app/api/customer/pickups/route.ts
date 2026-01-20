@@ -16,7 +16,8 @@ const groupSchema = z.object({
 });
 
 const schema = z.object({
-  userId: z.string().min(1),
+  userId: z.string().min(1).optional(),
+  orderReadyToken: z.string().min(1).optional(),
   email: z.string().email(),
   firstName: z.string().min(1),
   lastName: z.string().optional(),

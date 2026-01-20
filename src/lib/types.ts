@@ -73,6 +73,7 @@ export interface PickupFormData {
   pickupReference: string;
   appointmentGroups: AppointmentGroup[];
   selectedItems: OrderItemSelection[];
+  orderReadyToken: string;
   firstName: string;
   lastName: string;
   email: string;

@@ -490,7 +490,7 @@ const Index: React.FC = () => {
                   </div>
 
                   <Button variant="hero" size="lg" className="w-full mb-4" onClick={handleContinue}>
-                    Find Available Times
+                    Select Items for Pickup →
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Button>
 
@@ -704,7 +704,7 @@ const Index: React.FC = () => {
 
                 {/* Continue Button */}
                 <Button variant="hero" size="xl" className="w-full" onClick={handleContinue}>
-                  Find Available Times
+                  Select Items for Pickup →
                   <ArrowRight className="h-5 w-5" />
                 </Button>
               </CardContent>

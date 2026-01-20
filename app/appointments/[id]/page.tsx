@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format, addDays, parseISO } from "date-fns";
 import {
   CalendarDays,
@@ -10,6 +10,8 @@ import {
   Mail,
   Phone,
   ClipboardList,
+  User,
+  ArrowLeft,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +23,16 @@ import TimeSlotPicker from "@/components/scheduling/TimeSlotPicker";
 import { DayAvailability, TimeSlot } from "@/lib/types";
 
 type AppointmentOrder = { orderNbr: string };
+type AppointmentOrderItem = {
+  inventoryId: string | null;
+  lineDescription: string | null;
+  openQty: number | null;
+  orderQty: number | null;
+};
+type AppointmentOrderLines = {
+  orderNbr: string;
+  items: AppointmentOrderItem[];
+};
 type AppointmentResponse = {
   appointment: {
     id: string;
@@ -34,11 +46,13 @@ type AppointmentResponse = {
     customerPhone: string | null;
     orders: AppointmentOrder[];
   };
+  orderLines?: AppointmentOrderLines[];
 };
 
 function AppointmentContent() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { toast } = useToast();
   const appointmentId = String(params.id || "");
   const token = searchParams.get("token") || "";
@@ -46,6 +60,7 @@ function AppointmentContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [appointment, setAppointment] = useState<AppointmentResponse["appointment"] | null>(null);
+  const [orderLines, setOrderLines] = useState<AppointmentOrderLines[]>([]);
   const [nextLink, setNextLink] = useState<string | null>(null);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [availability, setAvailability] = useState<DayAvailability[]>([]);
@@ -73,6 +88,7 @@ function AppointmentContent() {
           return;
         }
         setAppointment(data?.appointment ?? null);
+        setOrderLines(data?.orderLines ?? []);
       })
       .catch(() => {
         if (active) setError("Unable to load appointment.");
@@ -183,6 +199,10 @@ function AppointmentContent() {
     parseISO(appointment.endAt),
     "h:mm a"
   )}`;
+  const formatQty = (qty: number | null) => {
+    if (qty == null) return "--";
+    return Number.isInteger(qty) ? `${qty}` : qty.toFixed(2);
+  };
 
   const isCancelled = appointment.status === "Cancelled";
   const isCompleted = appointment.status === "Completed";
@@ -193,62 +213,133 @@ function AppointmentContent() {
 
       <main className="container py-10">
         <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button variant="ghost" onClick={() => router.push("/")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to scheduling
+            </Button>
+          </div>
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle>Pickup Appointment</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-muted-foreground">
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4" />
-                  <span>{startLabel}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span>{timeLabel}</span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 mt-0.5" />
-                <div>
-                  <div className="text-foreground">{location?.name ?? appointment.locationId}</div>
-                  {location?.address && <div>{location.address}</div>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  <span>{appointment.customerEmail}</span>
-                </div>
-                {appointment.customerPhone ? (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    <span>{appointment.customerPhone}</span>
+              <div className="rounded-lg border border-border/60 bg-secondary/30 border-dashed p-4 space-y-3">
+                <div className="rounded-lg border border-border/60 bg-background/70 p-4">
+                  <div className="flex flex-wrap gap-4 items-start text-sm">
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {location?.name ?? appointment.locationId}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{location?.address ?? ""}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-muted-foreground">Date</p>
+                        <p className="font-medium">{startLabel}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Time</p>
+                      <p className="font-medium">{timeLabel}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Orders</p>
+                      <p className="font-medium">
+                        {orderNbrs.length} order{orderNbrs.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
                   </div>
-                ) : null}
+                </div>
               </div>
 
-              <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+              <div className="rounded-lg border border-border/60 bg-white p-4 space-y-2">
                 <div className="flex items-center gap-2 text-foreground">
-                  <ClipboardList className="h-4 w-4" />
-                  <span>Orders</span>
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold">Contact Information</span>
                 </div>
-                <div className="mt-2 text-muted-foreground">{orderNbrs.join(", ")}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span>
+                      {appointment.customerFirstName}
+                      {appointment.customerLastName ? ` ${appointment.customerLastName}` : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span>{appointment.customerEmail}</span>
+                  </div>
+                  {appointment.customerPhone ? (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span>{appointment.customerPhone}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-white p-4 space-y-4">
+                <div className="flex items-center gap-2 text-foreground">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold">Items to Pick Up</span>
+                </div>
+                {orderLines.length ? (
+                  <div className="space-y-4">
+                    {orderLines.map((order) => (
+                      <div key={order.orderNbr} className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Order {order.orderNbr}
+                        </div>
+                        <div className="space-y-2">
+                          {order.items.length ? (
+                            order.items.map((item, index) => (
+                              <div
+                                key={`${order.orderNbr}-${item.inventoryId ?? "item"}-${index}`}
+                                className="flex items-center justify-between rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-sm"
+                              >
+                                <div>
+                                  <div className="font-semibold text-foreground">
+                                    {item.inventoryId ?? "Item"}
+                                  </div>
+                                  {item.lineDescription ? (
+                                    <div className="text-xs text-muted-foreground">
+                                      {item.lineDescription}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Qty: <span className="font-semibold text-foreground">{formatQty(item.openQty ?? item.orderQty)}</span>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-muted-foreground">No items listed.</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No items available.</div>
+                )}
               </div>
 
               {!isCancelled && !isCompleted ? (
                 <div className="flex flex-wrap gap-3 pt-2">
                   <Button
-                    variant="outline"
+                    variant="hero"
                     onClick={() => setRescheduleOpen((prev) => !prev)}
                   >
                     {rescheduleOpen ? "Close Reschedule" : "Reschedule"}
                   </Button>
                   <Button
                     variant="ghost"
-                    className="text-destructive hover:text-destructive"
+                    className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
                     onClick={handleCancel}
                   >
                     Cancel Appointment

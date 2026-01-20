@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 
 type Props = {
   progress: number;
+  title?: string;
+  helperText?: string;
 };
 
 function getStatus(progress: number) {
@@ -15,7 +17,11 @@ function getStatus(progress: number) {
   return "Finalizing";
 }
 
-export default function FullPageSyncLoader({ progress }: Props) {
+export default function FullPageSyncLoader({
+  progress,
+  title = "Syncing your account",
+  helperText = "Please keep this window open while we pull your orders and details.",
+}: Props) {
   const status = getStatus(progress);
   const pct = Math.max(0, Math.min(100, Math.round(progress)));
 
@@ -26,7 +32,7 @@ export default function FullPageSyncLoader({ progress }: Props) {
           <div className="mx-auto mb-3 flex justify-center">
             <BrandMark size={72} className="opacity-90" />
           </div>
-          <CardTitle className="font-display text-xl">Syncing your account</CardTitle>
+          <CardTitle className="font-display text-xl">{title}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Progress value={pct} className="h-3" />
@@ -34,9 +40,7 @@ export default function FullPageSyncLoader({ progress }: Props) {
             <span>{status}</span>
             <span className="font-medium text-foreground">{pct}%</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Please keep this window open while we pull your orders and details.
-          </p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
         </CardContent>
       </Card>
     </div>

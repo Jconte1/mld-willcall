@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { CheckCircle, Calendar, CalendarPlus, Clock, MapPin, User, Phone, Mail, Car, FileText, Copy, Edit, X } from 'lucide-react';
+import { CheckCircle, Calendar, CalendarDays, CalendarPlus, Clock, MapPin, User, Phone, Mail, Car, FileText, Copy, Edit, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,7 +66,8 @@ const ConfirmationPage: React.FC = () => {
 
   const handleConfirm = async () => {
     const user = session?.user as any;
-    if (!user?.id || !user?.email) {
+    const isOrderReady = Boolean(formData.orderReadyToken);
+    if (!isOrderReady && (!user?.id || !user?.email)) {
       toast({ title: "Unable to schedule", description: "Missing account information." });
       return;
     }
@@ -77,8 +78,9 @@ const ConfirmationPage: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
-          email: user.email,
+          userId: user?.id,
+          orderReadyToken: formData.orderReadyToken || undefined,
+          email: formData.email,
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
@@ -99,6 +101,7 @@ const ConfirmationPage: React.FC = () => {
         : [];
       setAppointmentIds(newIds);
       setIsSubmitted(true);
+      updateFormData({ orderReadyToken: "" });
 
       toast({
         title: 'Pickup Scheduled!',
@@ -280,8 +283,11 @@ Reference: ${formData.pickupReference}`;
             </div>
 
             {/* Confirmation Card */}
-            <Card className="text-left shadow-xl animate-slide-up" style={{ animationDelay: '0.2s' }}>
-              <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
+            <Card
+              className="text-left shadow-xl animate-slide-up bg-secondary/30 border-dashed"
+              style={{ animationDelay: '0.2s' }}
+            >
+              <CardHeader className="border-b">
                 <CardTitle className="text-lg">Appointment Details</CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
@@ -290,7 +296,7 @@ Reference: ${formData.pickupReference}`;
                   return (
                     <div
                       key={group.id}
-                      className="rounded-lg border border-border/60 bg-white p-4 space-y-3"
+                      className="rounded-lg border border-border/60 bg-background/70 p-4 space-y-3"
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex items-start gap-3">
@@ -388,45 +394,6 @@ Reference: ${formData.pickupReference}`;
               <CardTitle>Review Your Appointment</CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
-              <div className="space-y-4">
-                {formData.appointmentGroups.map((group) => {
-                  const location = pickupLocations.find((loc) => loc.id === group.locationId);
-                  return (
-                    <div
-                      key={group.id}
-                      className="rounded-lg border border-border/60 bg-primary/5 p-4 space-y-3"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                          <Calendar className="h-6 w-6" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-lg">
-                            {group.selectedDate &&
-                              format(parseISO(group.selectedDate), 'EEEE, MMMM d, yyyy')}
-                          </p>
-                          <p className="text-muted-foreground">
-                            {group.selectedSlots.map((slot) => formatTime(slot.startTime)).join(', ')}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="font-medium">{location?.name}</p>
-                          <p className="text-sm text-muted-foreground">{location?.address}</p>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Orders: {group.orderNbrs.join(", ")}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <hr />
-
               {/* Contact Info */}
               <div className="space-y-3">
                 <h3 className="font-semibold text-foreground">Contact Information</h3>
@@ -456,7 +423,7 @@ Reference: ${formData.pickupReference}`;
                     <span className="text-muted-foreground">{formData.notes}</span>
                   </div>
                 )}
-                <div className="rounded-lg border border-border/60 bg-background/80 p-3 text-sm space-y-3">
+                <div className="rounded-lg border border-border bg-white p-3 text-sm space-y-3">
                     <label className="flex items-start gap-3">
                       <Checkbox
                         checked={formData.smsOptIn}
@@ -469,9 +436,59 @@ Reference: ${formData.pickupReference}`;
                         Text appointment updates (optional)
                       </span>
                     </label>
-                    <p className="text-xs text-muted-foreground">
-                      Email updates are always on. You can unsubscribe anytime from an email.
+                    <p className="text-xs font-semibold text-foreground">
+                      We strongly recommend opting in so you don't miss anything.
                     </p>
+                </div>
+              </div>
+
+              <hr />
+
+              {/* Appointment Details */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-foreground">Appointment Details</h3>
+                <div className="rounded-lg border border-border/60 bg-secondary/30 border-dashed p-4 space-y-3">
+                  {formData.appointmentGroups.map((group) => {
+                    const location = pickupLocations.find((loc) => loc.id === group.locationId);
+                    const selectedDate = group.selectedDate ? parseISO(group.selectedDate) : null;
+                    return (
+                      <div
+                        key={group.id}
+                        className="rounded-lg border border-border/60 bg-background/70 p-4"
+                      >
+                        <div className="flex flex-wrap gap-4 items-start text-sm">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-foreground">{location?.name}</p>
+                              <p className="text-xs text-muted-foreground">{location?.address}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5" />
+                            <div>
+                              <p className="text-muted-foreground">Date</p>
+                              <p className="font-medium">
+                                {selectedDate ? format(selectedDate, 'MMM d, yyyy') : '--'}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Time</p>
+                            <p className="font-medium">
+                              {group.selectedSlots.map((slot) => formatTime(slot.startTime)).join(', ')}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Orders</p>
+                            <p className="font-medium">
+                              {group.orderNbrs.length} order{group.orderNbrs.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -484,7 +501,7 @@ Reference: ${formData.pickupReference}`;
               </div>
 
               {formData.selectedItems.length ? (
-                <div className="rounded-lg border border-border/60 bg-background/80 p-4 space-y-4">
+                <div className="rounded-lg border border-border/60 bg-white p-4 space-y-4">
                   <div className="text-sm font-semibold text-foreground">Items to Pick Up</div>
                   {formData.selectedItems.map((selection) => (
                     <div key={selection.orderNbr} className="space-y-2">

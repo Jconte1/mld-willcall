@@ -47,6 +47,29 @@ const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
 const MIN_DEPOSIT_RATIO = 0.47;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
+type PublicOrderReadyResponse = {
+  orderReady: {
+    orderNbr: string;
+  };
+  payment?: {
+    orderTotal: number | null;
+    unpaidBalance: number | null;
+    terms: string | null;
+  } | null;
+  orderLines?: {
+    id: string;
+    inventoryId: string | null;
+    lineDescription: string | null;
+    warehouse: string | null;
+    openQty: number | null;
+    orderQty: number | null;
+    allocatedQty: number | null;
+    isAllocated: boolean;
+    amount: number | null;
+    taxRate: number | null;
+  }[];
+};
+
 const ItemSelectionPage: React.FC = () => {
   const router = useRouter();
   const { data: session } = useSession();
@@ -56,6 +79,7 @@ const ItemSelectionPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [orderGroups, setOrderGroups] = useState<OrderGroup[]>([]);
+  const orderReadyToken = formData.orderReadyToken;
 
   const orderNbrs = useMemo(
     () =>
@@ -75,7 +99,8 @@ const ItemSelectionPage: React.FC = () => {
 
   useEffect(() => {
     const user = session?.user as any;
-    if (!user?.id || !user?.email) return;
+    const usePublicFlow = Boolean(orderReadyToken);
+    if (!usePublicFlow && (!user?.id || !user?.email)) return;
     if (orderNbrs.length === 0) return;
 
     let active = true;
@@ -93,23 +118,42 @@ const ItemSelectionPage: React.FC = () => {
 
     Promise.all(
       orderNbrs.map(async (orderNbr) => {
-        const res = await fetch("/api/customer/orders/detail", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderNbr,
-            userId: user.id,
-            email: user.email,
-            baid: user.baid,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(data?.message ?? "Unable to load items.");
+        let data: any = {};
+        if (usePublicFlow) {
+          if (!orderReadyToken) {
+            throw new Error("Missing order-ready token.");
+          }
+          const res = await fetch(
+            `/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(orderReadyToken)}`
+          );
+          data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.message ?? "Unable to load items.");
+          }
+        } else {
+          const res = await fetch("/api/customer/orders/detail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderNbr,
+              userId: user.id,
+              email: user.email,
+              baid: user.baid,
+            }),
+          });
+          data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.message ?? "Unable to load items.");
+          }
         }
 
-        const lines = Array.isArray(data?.lines) ? data.lines : [];
-        const payment = data?.payment ?? {};
+        const publicPayload = data as PublicOrderReadyResponse;
+        const lines = Array.isArray(publicPayload?.orderLines)
+          ? publicPayload.orderLines
+          : Array.isArray(data?.lines)
+          ? data.lines
+          : [];
+        const payment = usePublicFlow ? publicPayload?.payment ?? {} : data?.payment ?? {};
         const orderTotal = Number(payment?.orderTotal ?? 0) || 0;
         const unpaidBalance = Number(payment?.unpaidBalance ?? 0) || 0;
         const terms = typeof payment?.terms === "string" ? payment.terms : null;
@@ -150,7 +194,7 @@ const ItemSelectionPage: React.FC = () => {
             isAvailable,
             maxQty,
             qty,
-            selected: Boolean(prevItem) && isAvailable,
+            selected: isAvailable,
           };
         });
 
@@ -189,7 +233,7 @@ const ItemSelectionPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [orderNbrs, session, formData.selectedItems]);
+  }, [orderNbrs, session, formData.selectedItems, orderReadyToken]);
 
   const selectedCount = useMemo(() => {
     return orderGroups.reduce(
