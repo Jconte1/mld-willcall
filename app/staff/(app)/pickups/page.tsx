@@ -161,6 +161,7 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
+  const isViewer = session?.user?.role === "VIEWER";
   const [view, setView] = useState<"day" | "week">("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [appointments, setAppointments] = useState<StaffPickup[]>([]);
@@ -438,6 +439,10 @@ export default function StaffPickupsPage() {
   };
 
   const handleSaveAppointment = async () => {
+    if (isViewer) {
+      setError("Viewer access is read-only.");
+      return;
+    }
     const startAt = toIsoLocalFromDateAndTime(formData.date, formData.startTime);
     const endAt = toIsoLocalFromDateAndTime(formData.date, formData.endTime);
     const orderNbrs = normalizeOrderNbrs(formData.orderNbrs);
@@ -499,6 +504,7 @@ export default function StaffPickupsPage() {
   };
 
   const handleDragDrop = async (event: React.DragEvent<HTMLDivElement>, day: Date) => {
+    if (isViewer) return;
     event.preventDefault();
     const appointmentId = event.dataTransfer.getData("text/plain");
     const appointment = appointments.find((apt) => apt.id === appointmentId);
@@ -558,8 +564,10 @@ export default function StaffPickupsPage() {
           return (
             <div
               key={apt.id}
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("text/plain", apt.id)}
+              draggable={!isViewer}
+              onDragStart={
+                isViewer ? undefined : (event) => event.dataTransfer.setData("text/plain", apt.id)
+              }
               onClick={() => handleOpenEdit(apt)}
               className={cn(
                 "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden",
@@ -649,7 +657,7 @@ export default function StaffPickupsPage() {
                 />
               ) : null}
 
-              <Button variant="hero" onClick={handleOpenCreate}>
+              <Button variant="hero" onClick={handleOpenCreate} disabled={isViewer}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Appointment
               </Button>
@@ -771,6 +779,7 @@ export default function StaffPickupsPage() {
                 <Select
                   value={formData.locationId}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, locationId: value }))}
+                  disabled={isViewer}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select location" />
@@ -793,6 +802,7 @@ export default function StaffPickupsPage() {
                 <Select
                   value={formData.status}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
+                  disabled={isViewer}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -815,6 +825,7 @@ export default function StaffPickupsPage() {
                   value={formData.customerEmail}
                   onChange={(event) => setFormData((prev) => ({ ...prev, customerEmail: event.target.value }))}
                   placeholder="customer@email.com"
+                  disabled={isViewer}
                 />
               </div>
               <div className="space-y-2">
@@ -823,6 +834,7 @@ export default function StaffPickupsPage() {
                   value={formData.customerPhone}
                   onChange={(event) => setFormData((prev) => ({ ...prev, customerPhone: event.target.value }))}
                   placeholder="(555) 555-5555"
+                  disabled={isViewer}
                 />
               </div>
             </div>
@@ -834,6 +846,7 @@ export default function StaffPickupsPage() {
                   value={formData.customerFirstName}
                   onChange={(event) => setFormData((prev) => ({ ...prev, customerFirstName: event.target.value }))}
                   placeholder="First name"
+                  disabled={isViewer}
                 />
               </div>
               <div className="space-y-2">
@@ -842,6 +855,7 @@ export default function StaffPickupsPage() {
                   value={formData.customerLastName}
                   onChange={(event) => setFormData((prev) => ({ ...prev, customerLastName: event.target.value }))}
                   placeholder="Last name"
+                  disabled={isViewer}
                 />
               </div>
             </div>
@@ -853,6 +867,7 @@ export default function StaffPickupsPage() {
                 value={formData.date}
                 onChange={(event) => setFormData((prev) => ({ ...prev, date: event.target.value }))}
                 placeholder="MM/DD/YYYY"
+                disabled={isViewer}
               />
               <datalist id="pickup-date-options">
                 {dateOptions.map((option) => (
@@ -868,6 +883,7 @@ export default function StaffPickupsPage() {
                 <Select
                   value={formData.startTime}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
+                  disabled={isViewer}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select start time" />
@@ -886,6 +902,7 @@ export default function StaffPickupsPage() {
                 <Select
                   value={formData.endTime}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
+                  disabled={isViewer}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select end time" />
@@ -907,6 +924,7 @@ export default function StaffPickupsPage() {
                 value={formData.orderNbrs}
                 onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
                 placeholder="C12345, C67890"
+                disabled={isViewer}
               />
             </div>
           </div>
@@ -915,7 +933,7 @@ export default function StaffPickupsPage() {
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant="hero" onClick={handleSaveAppointment}>
+            <Button variant="hero" onClick={handleSaveAppointment} disabled={isViewer}>
               {isCreating ? "Create Appointment" : "Save Changes"}
             </Button>
           </DialogFooter>

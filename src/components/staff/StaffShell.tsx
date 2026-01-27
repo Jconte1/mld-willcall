@@ -76,7 +76,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Staff mode</span>
                   <span className="text-sm font-medium">{session.user.email}</span>
                   <span className="text-xs text-muted-foreground">
-                    {session.user.role === "ADMIN" ? "Admin" : "Staff"}
+                    {session.user.role === "ADMIN" ? "Admin" : session.user.role === "VIEWER" ? "Viewer" : "Staff"}
                   </span>
                 </div>
                 <Button

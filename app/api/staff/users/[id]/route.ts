@@ -52,3 +52,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const authHeader = getAuthHeader(session);
+  if (!authHeader) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const backend = process.env.STAFF_API_BASE_URL;
+  if (!backend) return backendNotConfigured();
+
+  const res = await fetch(`${backend}/api/staff/users/${params.id}`, {
+    method: "DELETE",
+    headers: authHeader,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  return NextResponse.json(data, { status: res.status });
+}

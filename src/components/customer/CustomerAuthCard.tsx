@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PhoneInput from "@/components/system/PhoneInput";
 import FullPageSyncLoader from "@/components/system/FullPageSyncLoader";
@@ -33,10 +34,15 @@ const registerSchema = z
       .string()
       .transform((v) => v.replace(/\D/g, ""))
       .refine((v) => v.length === 10, { message: "Enter a 10-digit phone number" }),
+    zip: z
+      .string()
+      .transform((v) => v.replace(/\D/g, ""))
+      .refine((v) => v.length === 5, { message: "Enter a 5-digit ZIP code" }),
     baid: z
       .string()
       .transform((v) => v.trim())
       .refine((v) => BAID_REGEX.test(v), { message: "BAID must be BA + 7 digits" }),
+    inviteCode: z.string().min(6, "Invite code is required"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(6, "Confirm your password"),
   })
@@ -58,6 +64,10 @@ function normalizeBaid(value: string) {
   return value.trim().toUpperCase();
 }
 
+function normalizeZip(value: string) {
+  return value.replace(/\D/g, "").slice(0, 5);
+}
+
 function getLockKey(baid: string) {
   return `willcall:baidVerify:${baid}:lockUntil`;
 }
@@ -77,6 +87,13 @@ export default function CustomerAuthCard() {
   const [busy, setBusy] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [syncProgress, setSyncProgress] = React.useState(0);
+  const [requestingInvite, setRequestingInvite] = React.useState(false);
+  const [showResend, setShowResend] = React.useState(false);
+  const [resendMode, setResendMode] = React.useState<"email" | "phone">("email");
+  const [resendOrderNbr, setResendOrderNbr] = React.useState("");
+  const [resendEmail, setResendEmail] = React.useState("");
+  const [resendPhone, setResendPhone] = React.useState("");
+  const [resendSubmitting, setResendSubmitting] = React.useState(false);
 
   const [verifyState, setVerifyState] = React.useState<VerifyState>({ status: "idle" });
   const [lockedUntil, setLockedUntil] = React.useState<number>(0);
@@ -92,15 +109,20 @@ export default function CustomerAuthCard() {
       name: "",
       email: "",
       phone: "",
+      zip: "",
       baid: "",
+      inviteCode: "",
       password: "",
       confirmPassword: "",
     },
   });
 
   const watchedBaid = registerForm.watch("baid");
+  const watchedZip = registerForm.watch("zip");
   const normalizedBaid = React.useMemo(() => normalizeBaid(watchedBaid || ""), [watchedBaid]);
   const baidLooksValid = React.useMemo(() => BAID_REGEX.test(normalizedBaid), [normalizedBaid]);
+  const normalizedZip = React.useMemo(() => normalizeZip(watchedZip || ""), [watchedZip]);
+  const zipLooksValid = React.useMemo(() => normalizedZip.length === 5, [normalizedZip]);
 
   // If the BAID changes, clear prior verification.
   React.useEffect(() => {
@@ -121,7 +143,7 @@ export default function CustomerAuthCard() {
     } catch {
       // ignore
     }
-  }, [normalizedBaid, verifyState]);
+  }, [normalizedBaid, verifyState, normalizedZip]);
 
   const isLocked = lockedUntil > 0 && nowMs() < lockedUntil;
 
@@ -162,9 +184,15 @@ export default function CustomerAuthCard() {
 
   const onVerifyBaid = async () => {
     const baid = normalizeBaid(registerForm.getValues("baid"));
+    const zip = normalizeZip(registerForm.getValues("zip"));
 
     if (!BAID_REGEX.test(baid)) {
       setVerifyState({ status: "failed", message: "Enter a valid BAID (BA + 7 digits)." });
+      return;
+    }
+
+    if (zip.length !== 5) {
+      setVerifyState({ status: "failed", message: "Enter a 5-digit billing ZIP code." });
       return;
     }
 
@@ -179,7 +207,7 @@ export default function CustomerAuthCard() {
       const res = await fetch("/api/customer/verify-baid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baid }),
+        body: JSON.stringify({ baid, zip }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -241,6 +269,8 @@ export default function CustomerAuthCard() {
           email: values.email,
           phone: values.phone,
           baid: baid,
+          zip: normalizeZip(values.zip),
+          inviteCode: values.inviteCode,
           password: values.password,
         }),
       });
@@ -309,6 +339,103 @@ export default function CustomerAuthCard() {
       router.refresh();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onResendOrderReadyLink = async () => {
+    const orderNbr = resendOrderNbr.trim();
+    if (!orderNbr) {
+      toast({ title: "Enter order number", description: "Order number is required." });
+      return;
+    }
+    if (resendMode === "email" && !resendEmail.trim()) {
+      toast({ title: "Enter email", description: "Email is required." });
+      return;
+    }
+    if (resendMode === "phone" && !resendPhone.trim()) {
+      toast({ title: "Enter phone", description: "Phone number is required." });
+      return;
+    }
+
+    setResendSubmitting(true);
+    try {
+      const payload =
+        resendMode === "email"
+          ? { orderNbr, email: resendEmail.trim() }
+          : { orderNbr, phone: resendPhone };
+      const res = await fetch("/api/public/order-ready/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await res.json().catch(() => ({}));
+      toast({
+        title: "Request received",
+        description: "If your information matches, you will receive a link shortly.",
+      });
+      setShowResend(false);
+      setResendOrderNbr("");
+      setResendEmail("");
+      setResendPhone("");
+    } catch {
+      toast({
+        title: "Unable to send",
+        description: "Please try again in a moment.",
+      });
+    } finally {
+      setResendSubmitting(false);
+    }
+  };
+
+  const onRequestInvite = async () => {
+    const baid = normalizeBaid(registerForm.getValues("baid"));
+    const zip = normalizeZip(registerForm.getValues("zip"));
+
+    if (!BAID_REGEX.test(baid)) {
+      toast({ title: "Check BAID", description: "Enter a valid BAID to request a new code." });
+      return;
+    }
+    if (zip.length !== 5) {
+      toast({ title: "Check ZIP", description: "Enter your 5-digit billing ZIP code." });
+      return;
+    }
+
+    setRequestingInvite(true);
+    try {
+      const res = await fetch("/api/customer/invites/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baid, zip }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (data?.status === "locked") {
+        toast({
+          title: "Too many attempts",
+          description: "Please call 801-466-0990 ext. 3 for assistance.",
+        });
+        return;
+      }
+
+      if (data?.status === "admin-required") {
+        toast({
+          title: "Contact your admin",
+          description: "Please ask your account administrator to send you an invite.",
+        });
+        return;
+      }
+
+      toast({
+        title: "Invite sent",
+        description: "If your details match, you'll receive a code shortly.",
+      });
+    } catch {
+      toast({
+        title: "Unable to send",
+        description: "Please try again or contact support.",
+      });
+    } finally {
+      setRequestingInvite(false);
     }
   };
 
@@ -400,6 +527,71 @@ export default function CustomerAuthCard() {
                   </Button>
                 </form>
               </Form>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  onClick={() => setShowResend((prev) => !prev)}
+                >
+                  Can't find your pickup link?
+                </button>
+              </div>
+
+              {showResend ? (
+                <div className="mt-4 rounded-lg border border-border/60 bg-secondary/20 p-4 space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Order number</label>
+                    <Input
+                      value={resendOrderNbr}
+                      onChange={(event) => setResendOrderNbr(event.target.value)}
+                      placeholder="SO123456"
+                    />
+                  </div>
+
+                  <RadioGroup
+                    value={resendMode}
+                    onValueChange={(value) => setResendMode(value as "email" | "phone")}
+                    className="grid gap-2"
+                  >
+                    <label className="flex items-center gap-2 text-sm">
+                      <RadioGroupItem value="email" />
+                      Email
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <RadioGroupItem value="phone" />
+                      Phone
+                    </label>
+                  </RadioGroup>
+
+                  {resendMode === "email" ? (
+                    <div>
+                      <label className="text-xs text-muted-foreground">Email</label>
+                      <Input
+                        value={resendEmail}
+                        onChange={(event) => setResendEmail(event.target.value)}
+                        placeholder="you@example.com"
+                        type="email"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs text-muted-foreground">Phone</label>
+                      <PhoneInput value={resendPhone} onChange={setResendPhone} />
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={onResendOrderReadyLink}
+                    disabled={resendSubmitting}
+                  >
+                    {resendSubmitting ? "Sending..." : "Send pickup link"}
+                  </Button>
+                </div>
+              ) : null}
             </TabsContent>
 
             <TabsContent value="register">
@@ -481,16 +673,41 @@ export default function CustomerAuthCard() {
                     name="baid"
                     render={({ field }) => (
                       <FormItem>
+                        <FormLabel>BAID</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter your BAID"
+                            autoComplete="off"
+                            {...field}
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={registerForm.control}
+                    name="zip"
+                    render={({ field }) => (
+                      <FormItem>
                         <div className="flex items-end justify-between gap-3">
                           <div className="flex-1">
-                            <FormLabel>BAID</FormLabel>
+                            <FormLabel>Billing ZIP code</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="BA0001969"
-                                autoComplete="off"
+                                placeholder="84043"
+                                inputMode="numeric"
+                                autoComplete="postal-code"
+                                maxLength={5}
                                 {...field}
                                 onChange={(e) => {
-                                  field.onChange(e.target.value);
+                                  const next = normalizeZip(e.target.value);
+                                  field.onChange(next);
                                   if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
                                 }}
                               />
@@ -502,7 +719,13 @@ export default function CustomerAuthCard() {
                             variant="secondary"
                             className="shrink-0"
                             onClick={onVerifyBaid}
-                            disabled={busy || verifyState.status === "verifying" || !baidLooksValid || isLocked}
+                            disabled={
+                              busy ||
+                              verifyState.status === "verifying" ||
+                              !baidLooksValid ||
+                              !zipLooksValid ||
+                              isLocked
+                            }
                           >
                             Verify
                           </Button>
@@ -514,6 +737,38 @@ export default function CustomerAuthCard() {
 
                         <div className="min-h-[20px]">{verifyUi}</div>
 
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={registerForm.control}
+                    name="inviteCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-end justify-between gap-3">
+                          <div className="flex-1">
+                            <FormLabel>Invite Code</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter your invite code"
+                                autoComplete="off"
+                                maxLength={12}
+                                {...field}
+                              />
+                            </FormControl>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={onRequestInvite}
+                            disabled={requestingInvite || !baidLooksValid || !zipLooksValid}
+                          >
+                            {requestingInvite ? "Sending..." : "Get a new code"}
+                          </Button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

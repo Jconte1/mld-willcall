@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -59,6 +59,13 @@ export default function StaffChangePasswordPage() {
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
+      console.info("[staff-change-password] session snapshot", {
+        status,
+        hasSession: Boolean(session),
+        userId: session?.user?.id,
+        hasToken: Boolean(session?.user?.staffToken),
+        mustChangePassword: session?.user?.mustChangePassword,
+      });
       console.info("[staff-change-password] submitting");
       const res = await fetch("/api/staff/change-password", {
         method: "POST",
@@ -75,8 +82,17 @@ export default function StaffChangePasswordPage() {
         throw new Error(data?.message || "Unable to change password");
       }
 
-      // Update session token so middleware stops redirecting.
+      // Re-auth to refresh JWT mustChangePassword flag, then force a session update.
       try {
+        const email = session?.user?.email ?? "";
+        if (email) {
+          const relog = await signIn("credentials", {
+            redirect: false,
+            email,
+            password: values.newPassword,
+          });
+          console.info("[staff-change-password] reauth", relog);
+        }
         const updatedSession = await update({ mustChangePassword: false });
         console.info("[staff-change-password] session updated", updatedSession);
       } catch (err) {
@@ -85,6 +101,7 @@ export default function StaffChangePasswordPage() {
 
       toast({ title: "Password updated", description: "You're all set." });
       router.replace("/staff");
+      router.refresh();
     } catch (err: any) {
       console.error("[staff-change-password] error", err);
       toast({ title: "Password change failed", description: err?.message || "Please try again." });
@@ -104,6 +121,23 @@ export default function StaffChangePasswordPage() {
             </p>
           </CardHeader>
           <CardContent>
+            {session?.user?.email ? (
+              <div className="mb-4 flex flex-col gap-2 rounded-lg border border-muted/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <div>
+                  Signed in as <span className="font-medium text-foreground">{session.user.email}</span>
+                </div>
+                <div>
+                  Not you?{" "}
+                  <button
+                    type="button"
+                    className="text-primary underline"
+                    onClick={() => signOut({ callbackUrl: "/staff/login" })}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField

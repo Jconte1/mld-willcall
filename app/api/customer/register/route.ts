@@ -10,10 +10,15 @@ const schema = z.object({
     .string()
     .transform((v) => v.replace(/\D/g, ""))
     .refine((v) => v.length === 10, { message: "Enter a 10-digit phone number" }),
+  zip: z
+    .string()
+    .transform((v) => v.replace(/\D/g, "").slice(0, 5))
+    .refine((v) => /^\d{5}$/.test(v), { message: "ZIP must be 5 digits" }),
   baid: z
     .string()
     .transform((v) => v.replace(/\s+/g, "").toUpperCase())
     .refine((v) => /^BA\d{7}$/.test(v), { message: "BAID must be BA followed by 7 digits" }),
+  inviteCode: z.string().min(6, "Invite code is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 

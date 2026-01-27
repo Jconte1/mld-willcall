@@ -7,6 +7,14 @@ import { ChevronDown, ChevronRight, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Header from "@/components/layout/Header";
 import ProgressSteps from "@/components/scheduling/ProgressSteps";
 import { usePickup } from "@/context/PickupContext";
@@ -39,6 +47,7 @@ type OrderGroup = {
     orderTotal: number | null;
     unpaidBalance: number | null;
     terms: string | null;
+    status: string | null;
   };
   pickedUpValue: number;
 };
@@ -55,6 +64,7 @@ type PublicOrderReadyResponse = {
     orderTotal: number | null;
     unpaidBalance: number | null;
     terms: string | null;
+    status: string | null;
   } | null;
   orderLines?: {
     id: string;
@@ -79,7 +89,9 @@ const ItemSelectionPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [orderGroups, setOrderGroups] = useState<OrderGroup[]>([]);
+  const [creditHoldOpen, setCreditHoldOpen] = useState(false);
   const orderReadyToken = formData.orderReadyToken;
+  const usePublicFlow = Boolean(orderReadyToken);
 
   const orderNbrs = useMemo(
     () =>
@@ -99,7 +111,6 @@ const ItemSelectionPage: React.FC = () => {
 
   useEffect(() => {
     const user = session?.user as any;
-    const usePublicFlow = Boolean(orderReadyToken);
     if (!usePublicFlow && (!user?.id || !user?.email)) return;
     if (orderNbrs.length === 0) return;
 
@@ -157,14 +168,20 @@ const ItemSelectionPage: React.FC = () => {
         const orderTotal = Number(payment?.orderTotal ?? 0) || 0;
         const unpaidBalance = Number(payment?.unpaidBalance ?? 0) || 0;
         const terms = typeof payment?.terms === "string" ? payment.terms : null;
-        const pickedUpValue = lines.reduce((sum: number, line: any) => {
-          const openQty = Number(line.openQty ?? 0);
-          if (openQty > 0) return sum;
+        const status = typeof payment?.status === "string" ? payment.status : null;
+        const pickedUpValueRaw = lines.reduce((sum: number, line: any) => {
+          const orderQty = Number(line.orderQty ?? 0) || 0;
+          if (orderQty <= 0) return sum;
+          const openQty = Math.max(0, Number(line.openQty ?? 0));
+          const pickedUpQty = Math.max(0, orderQty - openQty);
+          if (pickedUpQty <= 0) return sum;
           const lineAmount = Number(line.amount ?? 0) || 0;
           const taxRate = Number(line.taxRate ?? 0) || 0;
-          const lineTax = lineAmount * (taxRate / 100);
-          return sum + lineAmount + lineTax;
+          const perUnitPreTax = lineAmount / orderQty;
+          const perUnitTax = perUnitPreTax * (taxRate / 100);
+          return sum + pickedUpQty * (perUnitPreTax + perUnitTax);
         }, 0);
+        const pickedUpValue = Math.round(pickedUpValueRaw * 100) / 100;
         const prev = previousSelections.get(orderNbr);
         const items: ItemRow[] = lines.map((line: any) => {
           const openQty = Number(line.openQty ?? 0);
@@ -180,7 +197,7 @@ const ItemSelectionPage: React.FC = () => {
             : isAvailable
             ? maxQty
             : fallbackQty;
-          return {
+        return {
             lineId: line.id,
             inventoryId: line.inventoryId ?? null,
             description: line.lineDescription ?? null,
@@ -198,13 +215,19 @@ const ItemSelectionPage: React.FC = () => {
           };
         });
 
+        const sortedItems = [...items].sort((a, b) => {
+          if (a.isAvailable === b.isAvailable) return 0;
+          return a.isAvailable ? -1 : 1;
+        });
+
         return {
           orderNbr,
-          items,
+          items: sortedItems,
           payment: {
             orderTotal,
             unpaidBalance,
             terms,
+            status,
           },
           pickedUpValue,
         };
@@ -242,6 +265,20 @@ const ItemSelectionPage: React.FC = () => {
     );
   }, [orderGroups]);
 
+  const creditHoldActive = useMemo(() => {
+    if (usePublicFlow) return false;
+    return orderGroups.some((group) => {
+      const status = (group.payment.status ?? "").trim().toLowerCase();
+      return status === "credit hold";
+    });
+  }, [orderGroups, usePublicFlow]);
+
+  useEffect(() => {
+    if (creditHoldActive) {
+      setCreditHoldOpen(true);
+    }
+  }, [creditHoldActive]);
+
   const paymentBlocks = useMemo(() => {
     return orderGroups
       .map((group) => {
@@ -249,10 +286,23 @@ const ItemSelectionPage: React.FC = () => {
         if (!PREPAY_TERMS.has(terms)) return null;
         const orderTotal = group.payment.orderTotal ?? 0;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
-                        const paid = Math.max(0, orderTotal - unpaidBalance);
-                        const deposit = paid;
-                        const requiredDeposit = orderTotal * MIN_DEPOSIT_RATIO;
-        const selectedValue = group.items.reduce((sum, item) => {
+        const paid = Math.max(0, orderTotal - unpaidBalance);
+
+        const remainingValueRaw = group.items.reduce((sum, item) => {
+          const orderQty = item.orderQty ?? 0;
+          const lineAmount = item.lineAmount ?? 0;
+          const taxRate = item.taxRate ?? 0;
+          if (orderQty <= 0) return sum;
+          const perUnitPreTax = lineAmount / orderQty;
+          const perUnitTax = perUnitPreTax * (taxRate / 100);
+          const openQty = Math.max(0, item.openQty ?? 0);
+          const selectedQty = item.selected ? item.qty : 0;
+          const remainingQty = Math.max(0, openQty - selectedQty);
+          return sum + remainingQty * (perUnitPreTax + perUnitTax);
+        }, 0);
+
+        const remainingValue = Math.round(remainingValueRaw * 100) / 100;
+        const selectedValueRaw = group.items.reduce((sum, item) => {
           if (!item.selected) return sum;
           const orderQty = item.orderQty ?? 0;
           const lineAmount = item.lineAmount ?? 0;
@@ -262,32 +312,27 @@ const ItemSelectionPage: React.FC = () => {
           const perUnitTax = perUnitPreTax * (taxRate / 100);
           return sum + item.qty * (perUnitPreTax + perUnitTax);
         }, 0);
-        const taxTotal = group.items.reduce((sum, item) => {
-          const orderQty = item.orderQty ?? 0;
-          const lineAmount = item.lineAmount ?? 0;
-          const taxRate = item.taxRate ?? 0;
-          if (orderQty <= 0) return sum;
-          return sum + lineAmount * (taxRate / 100);
-        }, 0);
-        const owedForSelection = selectedValue + group.pickedUpValue - paid;
-        const owedForDeposit = requiredDeposit - paid;
-        const amountOwed = Math.max(0, owedForSelection, owedForDeposit);
+        const selectedValue = Math.round(selectedValueRaw * 100) / 100;
+        const amountOwed =
+          remainingValue === 0
+            ? Math.max(0, unpaidBalance)
+            : Math.max(
+                0,
+                group.pickedUpValue + selectedValue + remainingValue * 0.5 - paid
+              );
+
         if (amountOwed <= 0) return null;
         return {
           orderNbr: group.orderNbr,
-          deposit,
-          orderTotal,
+          remainingValue,
           selectedValue,
-          taxTotal,
           amountOwed,
         };
       })
       .filter(Boolean) as Array<{
       orderNbr: string;
-      deposit: number;
-      orderTotal: number;
+      remainingValue: number;
       selectedValue: number;
-      taxTotal: number;
       amountOwed: number;
     }>;
   }, [orderGroups]);
@@ -364,6 +409,10 @@ const ItemSelectionPage: React.FC = () => {
   };
 
   const handleContinue = () => {
+    if (creditHoldActive) {
+      setCreditHoldOpen(true);
+      return;
+    }
     if (selectedCount === 0) {
       toast({
         title: "Select at least one item",
@@ -420,10 +469,10 @@ const ItemSelectionPage: React.FC = () => {
               {paymentBlocks.length ? (
                 <div className="rounded-lg border border-[#d24f39] bg-[#fdf5f2] p-4 text-sm text-[#b13d2b]">
                   <p className="font-semibold text-[#b13d2b]">
-                    Additional payment required before pickup.
+                    Prepay balance required.
                   </p>
                   <p className="mt-1 text-xs text-[#b13d2b]">
-                    Please call (801)-466-0990 Ext. 3 or your salesperson to complete payment.
+                    Additional payment is due. Please call (801)-466-0990 Ext. 3 or your salesperson.
                   </p>
                   <div className="mt-3 space-y-2 text-xs">
                     {paymentBlocks.map((block) => (
@@ -434,11 +483,11 @@ const ItemSelectionPage: React.FC = () => {
                         <div className="font-semibold text-[#7a2b1f]">
                           Order {block.orderNbr}
                         </div>
-                        <div>Deposit: {money.format(block.deposit)}</div>
-                        <div>Tax: {money.format(block.taxTotal)}</div>
-                        <div>Order Total: {money.format(block.orderTotal)}</div>
-                        <div className="my-2 h-px bg-[#f1c3ba]" />
-                        <div>Selected items: {money.format(block.selectedValue)}</div>
+                        {block.remainingValue === 0 ? (
+                          <div className="text-xs text-[#7a2b1f]">
+                            All remaining items are selected. Balance due in full.
+                          </div>
+                        ) : null}
                         <div className="font-semibold">
                           Amount owed: {money.format(block.amountOwed)}
                         </div>
@@ -550,11 +599,7 @@ const ItemSelectionPage: React.FC = () => {
                                           className="mt-1"
                                           disabled={!item.isAvailable}
                                         />
-                                      ) : (
-                                        <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                          Item(s) not ready for pick up
-                                        </span>
-                                      )}
+                                      ) : null}
                                       <div className="min-w-0">
                                         <div className="text-sm font-medium text-foreground truncate">
                                           {item.inventoryId ?? "Item"}
@@ -601,7 +646,9 @@ const ItemSelectionPage: React.FC = () => {
                                         </>
                                       ) : (
                                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                          Item(s) not ready for pick up
+                                          {(item.openQty ?? 0) <= 0
+                                            ? "Item already picked up"
+                                            : "Item(s) not ready for pick up"}
                                         </span>
                                       )}
                                     </div>
@@ -627,12 +674,28 @@ const ItemSelectionPage: React.FC = () => {
             <Button variant="ghost" onClick={handleBack}>
               Back
             </Button>
-            <Button variant="hero" onClick={handleContinue} disabled={loading}>
+            <Button variant="hero" onClick={handleContinue} disabled={loading || creditHoldActive}>
               Continue
             </Button>
           </div>
         </div>
       </main>
+      <Dialog open={creditHoldOpen} onOpenChange={setCreditHoldOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Account on credit hold</DialogTitle>
+            <DialogDescription>
+              Your account is on credit hold. No pick ups may be scheduled at this time. Please
+              call our accounting team at 801-466-0990 ext. 3 for more information.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setCreditHoldOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

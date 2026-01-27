@@ -1,16 +1,31 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
-import { Search, ArrowRight, Truck, Clock, CheckCircle } from "lucide-react";
+import {
+  Search,
+  ArrowRight,
+  Users,
+  Mail,
+  ClipboardList,
+  UserPlus,
+  UserMinus,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -23,15 +38,11 @@ import {
 import Header from "@/components/layout/Header";
 import BrandMark from "@/components/brand/BrandMark";
 import CustomerAuthCard from "@/components/customer/CustomerAuthCard";
+import FullPageSyncLoader from "@/components/system/FullPageSyncLoader";
 
 import { usePickup } from "@/context/PickupContext";
 import { pickupLocations, resolvePickupLocationIds } from "@/lib/pickupLocations";
-
-type Feature = {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-};
+import { useToast } from "@/hooks/use-toast";
 
 type OrderSummaryRow = {
   id: string;
@@ -50,6 +61,7 @@ type OrderSummaryRow = {
     closedLines: number;
   };
   isPickupReady: boolean;
+  lastPickupAt: string | null;
   appointment: {
     id: string;
     status: string;
@@ -60,15 +72,49 @@ type OrderSummaryRow = {
   } | null;
 };
 
+type MemberRow = {
+  userId: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "PM";
+  lastActiveAt: string | null;
+};
+
+type InviteRow = {
+  id: string;
+  role: "ADMIN" | "PM";
+  recipientEmail: string | null;
+  recipientPhone: string | null;
+  status: "Pending" | "Used" | "Revoked" | "Expired";
+  createdAt: string;
+  expiresAt: string | null;
+  usedAt: string | null;
+};
+
+type RequestRow = {
+  id: string;
+  createdAt: string;
+  baid: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  result: string;
+  reason: string | null;
+};
+
 const ORDER_PREVIEW_LIMIT = 5;
 
 const Index: React.FC = () => {
   const router = useRouter();
   const { updateFormData, formData } = usePickup();
   const { status, data: session } = useSession();
+  const { toast } = useToast();
 
-  const userType = (session?.user as any)?.type;
+  const user = session?.user as any;
+  const userType = user?.type;
   const isCustomer = status === "authenticated" && userType === "customer";
+  const accountRole = user?.accountRole ?? null;
+  const isDeveloper = Boolean(user?.isDeveloper);
+  const isAdmin = accountRole === "ADMIN" || isDeveloper;
 
   const [orderQuery, setOrderQuery] = useState("");
   const [error, setError] = useState("");
@@ -87,6 +133,60 @@ const Index: React.FC = () => {
   const [cancelError, setCancelError] = useState("");
 
   const [visibleOrderCount, setVisibleOrderCount] = useState(ORDER_PREVIEW_LIMIT);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+
+  const [dashboardTab, setDashboardTab] = useState<
+    "orders" | "members" | "invitations" | "requests"
+  >("orders");
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
+
+  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState("");
+  const [inviteQuery, setInviteQuery] = useState("");
+
+  const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsError, setRequestsError] = useState("");
+
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    role: "PM" as "ADMIN" | "PM",
+  });
+  const [inviteActionId, setInviteActionId] = useState<string | null>(null);
+  const [memberActionId, setMemberActionId] = useState<string | null>(null);
+
+  const [overrideBaid, setOverrideBaid] = useState("");
+  const [activeBaid, setActiveBaid] = useState("");
+  const [overrideInput, setOverrideInput] = useState("");
+
+  useEffect(() => {
+    if (!syncing) return;
+    setSyncProgress(0);
+    const interval = window.setInterval(() => {
+      setSyncProgress((prev) => {
+        if (prev >= 92) return prev;
+        const bump = 3 + Math.random() * 6;
+        return Math.min(92, prev + bump);
+      });
+    }, 600);
+
+    return () => window.clearInterval(interval);
+  }, [syncing]);
+
+  useEffect(() => {
+    if (!session?.user?.baid) return;
+    if (overrideBaid) return;
+    setActiveBaid(session.user.baid);
+  }, [session, overrideBaid]);
 
   useEffect(() => {
     // If a staff member lands on the customer home, send them to staff.
@@ -95,12 +195,42 @@ const Index: React.FC = () => {
     }
   }, [status, userType, router]);
 
-  const loadOrders = () => {
-    if (!isCustomer) return;
-    const user = session?.user as any;
-    if (!user?.baid || !user?.email) return;
+  const effectiveBaid = (overrideBaid || activeBaid || "").trim().toUpperCase();
 
-    let cancelled = false;
+  const roleLabel = (role: "ADMIN" | "PM") => (role === "ADMIN" ? "Admin" : "Manager");
+
+  const statusBadgeVariant = (status: InviteRow["status"]) => {
+    if (status === "Pending") return "secondary";
+    if (status === "Used") return "default";
+    if (status === "Revoked") return "destructive";
+    return "outline";
+  };
+
+  const applyOverrideBaid = () => {
+    const normalized = overrideInput.trim().toUpperCase();
+    if (!/^BA\\d{7}$/.test(normalized)) {
+      toast({
+        title: "Invalid BAID",
+        description: "Enter a BAID in the format BA1234567.",
+      });
+      return;
+    }
+    setOverrideBaid(normalized);
+    setActiveBaid(normalized);
+    setDashboardTab("orders");
+  };
+
+  const clearOverrideBaid = () => {
+    setOverrideBaid("");
+    setOverrideInput("");
+    if (session?.user?.baid) {
+      setActiveBaid(session.user.baid);
+    }
+  };
+
+  const loadOrders = async (user: any, cancelledRef: { current: boolean }, baid: string) => {
+    if (!isCustomer || !user?.email || !baid) return;
+
     setOrdersLoading(true);
     setOrdersError("");
     setReauthRequired(false);
@@ -108,49 +238,93 @@ const Index: React.FC = () => {
     console.log("[orders] request", {
       userId: user?.id,
       email: user?.email,
-      baid: user?.baid,
+      baid: baid,
     });
 
-    fetch("/api/customer/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.email, baid: user.baid, userId: user.id }),
-    })
-      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-      .then(({ ok, data }) => {
-        if (cancelled) return;
-        console.log("[orders] response", { ok, status: ok ? 200 : 400, data });
-        if (!ok) {
-          const message = data?.message ?? "Unable to load orders.";
-          setOrdersError(message);
-          if (
-            typeof message === "string" &&
-            message.toLowerCase().includes("no baid")
-          ) {
-            setReauthRequired(true);
-          }
-          return;
-        }
-        setOrders(Array.isArray(data?.orders) ? data.orders : []);
-      })
-      .catch(() => {
-        if (!cancelled) setOrdersError("Unable to load orders.");
-      })
-      .finally(() => {
-        if (!cancelled) setOrdersLoading(false);
+    try {
+      const res = await fetch("/api/customer/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, baid: baid, userId: user.id }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (cancelledRef.current) return;
 
-    return () => {
-      cancelled = true;
-    };
+      console.log("[orders] response", { ok: res.ok, status: res.status, data });
+      if (!res.ok) {
+        const message = data?.message ?? "Unable to load orders.";
+        setOrdersError(message);
+        if (
+          typeof message === "string" &&
+          message.toLowerCase().includes("no baid")
+        ) {
+          setReauthRequired(true);
+        }
+        return;
+      }
+      setOrders(Array.isArray(data?.orders) ? data.orders : []);
+    } catch {
+      if (!cancelledRef.current) setOrdersError("Unable to load orders.");
+    } finally {
+      if (!cancelledRef.current) setOrdersLoading(false);
+    }
+  };
+
+  const reloadOrders = async () => {
+    const user = session?.user as any;
+    if (!user?.email || !effectiveBaid) return;
+    const cancelledRef = { current: false };
+    await loadOrders(user, cancelledRef, effectiveBaid);
+  };
+
+  const runCustomerSync = async (user: any, baid: string) => {
+    if (!isCustomer || !user?.email || !baid) return;
+    setSyncing(true);
+    setSyncProgress(5);
+
+    try {
+      const res = await fetch("/api/customer/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, baid: baid, userId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (data?.status === "failed" || data?.status === "backoff") {
+        console.warn("[orders][sync] fallback", data);
+        const lastSyncAt = data?.lastSyncAt ? new Date(data.lastSyncAt) : null;
+        const description = lastSyncAt
+          ? `Showing last synced data from ${lastSyncAt.toLocaleString("en-US")}.`
+          : "Showing cached data while we retry the sync.";
+        toast({
+          title: "Sync unavailable",
+          description,
+        });
+      }
+    } finally {
+      setSyncProgress(100);
+      window.setTimeout(() => setSyncing(false), 250);
+    }
   };
 
   useEffect(() => {
-    const cleanup = loadOrders();
-    return () => {
-      if (typeof cleanup === "function") cleanup();
+    if (!isCustomer) return;
+    const user = session?.user as any;
+    if (!user?.email || !effectiveBaid) return;
+
+    const cancelledRef = { current: false };
+    const run = async () => {
+      await runCustomerSync(user, effectiveBaid);
+      if (!cancelledRef.current) {
+        await loadOrders(user, cancelledRef, effectiveBaid);
+      }
     };
-  }, [isCustomer, session]);
+    run();
+
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [isCustomer, session, effectiveBaid]);
 
   const filteredOrders = useMemo(() => {
     if (!orderQuery.trim()) return orders;
@@ -303,7 +477,16 @@ const Index: React.FC = () => {
     const date = start.toLocaleDateString();
     const time = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const endTime = end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    return `Scheduled for ${date} • ${time}–${endTime}`;
+    return `Scheduled for ${date} - ${time}-${endTime}`;
+  };
+
+  const formatLastPickup = (value: string | null) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const date = d.toLocaleDateString();
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return `Last pickup: ${date} ${time}`;
   };
 
   const handleCancel = async (appointmentId: string) => {
@@ -320,7 +503,7 @@ const Index: React.FC = () => {
       setActionError(data?.message ?? "Unable to cancel pickup.");
       return false;
     }
-    loadOrders();
+    reloadOrders();
     return true;
   };
 
@@ -367,7 +550,7 @@ const Index: React.FC = () => {
     setCancelAppointment(null);
     setCancelSelectedOrders([]);
     setCancelSubmitting(false);
-    loadOrders();
+    reloadOrders();
   };
 
   const cancelImpactMessage = useMemo(() => {
@@ -402,36 +585,261 @@ const Index: React.FC = () => {
     router.push("/items");
   };
 
-  const features: Feature[] = useMemo(
-    () => [
-      {
-        icon: Clock,
-        title: "Save Time",
-        description: "Skip the wait with a pre-scheduled pickup slot",
-      },
-      {
-        icon: Truck,
-        title: "Convenient",
-        description: "Choose a time that works for your schedule",
-      },
-      {
-        icon: CheckCircle,
-        title: "Peace of Mind",
-        description: "Get confirmation and reminders for your pickup",
-      },
-    ],
-    []
-  );
+  const fetchMembers = async () => {
+    if (!isCustomer || !user?.id || !effectiveBaid) return;
+    setMembersLoading(true);
+    setMembersError("");
+    try {
+      const res = await fetch("/api/customer/invites/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMembersError(data?.message ?? "Unable to load members.");
+        return;
+      }
+      setMembers(Array.isArray(data?.members) ? data.members : []);
+    } catch {
+      setMembersError("Unable to load members.");
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const fetchInvites = async () => {
+    if (!isCustomer || !user?.id || !effectiveBaid) return;
+    setInvitesLoading(true);
+    setInvitesError("");
+    try {
+      const res = await fetch("/api/customer/invites/invitations/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInvitesError(data?.message ?? "Unable to load invitations.");
+        return;
+      }
+      setInvites(Array.isArray(data?.invites) ? data.invites : []);
+    } catch {
+      setInvitesError("Unable to load invitations.");
+    } finally {
+      setInvitesLoading(false);
+    }
+  };
+
+  const fetchRequests = async () => {
+    if (!isCustomer || !user?.id || !effectiveBaid || !isAdmin) return;
+    setRequestsLoading(true);
+    setRequestsError("");
+    try {
+      const res = await fetch("/api/customer/invites/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRequestsError(data?.message ?? "Unable to load requests.");
+        return;
+      }
+      setRequests(Array.isArray(data?.requests) ? data.requests : []);
+    } catch {
+      setRequestsError("Unable to load requests.");
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  const handleInviteSubmit = async () => {
+    if (!isAdmin || !user?.id || !effectiveBaid) return;
+    const payload = {
+      userId: user.id,
+      baid: effectiveBaid,
+      name: inviteForm.name.trim(),
+      email: inviteForm.email.trim(),
+      phone: inviteForm.phone.trim() || undefined,
+      role: inviteForm.role,
+    };
+    if (!payload.name || !payload.email) {
+      toast({ title: "Missing details", description: "Name and email are required." });
+      return;
+    }
+    setInviteSubmitting(true);
+    try {
+      const res = await fetch("/api/customer/invites/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Invite failed",
+          description: data?.message ?? "Unable to send invite.",
+        });
+        return;
+      }
+      toast({
+        title: "Invite sent",
+        description: "The invite code was sent successfully.",
+      });
+      setInviteDialogOpen(false);
+      setInviteForm({ name: "", email: "", phone: "", role: "PM" });
+      await fetchInvites();
+    } finally {
+      setInviteSubmitting(false);
+    }
+  };
+
+  const openResendInvite = (invite: InviteRow) => {
+    setInviteForm({
+      name: invite.recipientEmail?.split("@")[0] ?? "",
+      email: invite.recipientEmail ?? "",
+      phone: invite.recipientPhone ?? "",
+      role: invite.role,
+    });
+    setInviteDialogOpen(true);
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    if (!isAdmin || !user?.id || !effectiveBaid) return;
+    setInviteActionId(inviteId);
+    try {
+      const res = await fetch("/api/customer/invites/invitations/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid, inviteId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Unable to revoke",
+          description: data?.message ?? "Please try again.",
+        });
+        return;
+      }
+      await fetchInvites();
+    } finally {
+      setInviteActionId(null);
+    }
+  };
+
+  const handleUpdateMemberRole = async (targetUserId: string, role: "ADMIN" | "PM") => {
+    if (!isAdmin || !user?.id || !effectiveBaid) return;
+    setMemberActionId(targetUserId);
+    try {
+      const res = await fetch("/api/customer/invites/members/role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid, targetUserId, role }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Role update failed",
+          description: data?.message ?? "Please try again.",
+        });
+        return;
+      }
+      await fetchMembers();
+    } finally {
+      setMemberActionId(null);
+    }
+  };
+
+  const handleRemoveMember = async (targetUserId: string) => {
+    if (!isAdmin || !user?.id || !effectiveBaid) return;
+    setMemberActionId(targetUserId);
+    try {
+      const res = await fetch("/api/customer/invites/members/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, baid: effectiveBaid, targetUserId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Unable to remove",
+          description: data?.message ?? "Please try again.",
+        });
+        return;
+      }
+      await fetchMembers();
+    } finally {
+      setMemberActionId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (dashboardTab === "members") {
+      fetchMembers();
+    }
+  }, [dashboardTab, effectiveBaid]);
+
+  useEffect(() => {
+    if (dashboardTab === "invitations") {
+      fetchInvites();
+    }
+  }, [dashboardTab, effectiveBaid]);
+
+  useEffect(() => {
+    if (dashboardTab === "requests" && isAdmin) {
+      fetchRequests();
+    }
+  }, [dashboardTab, effectiveBaid, isAdmin]);
+
+  const filteredMembers = useMemo(() => {
+    const needle = memberQuery.trim().toLowerCase();
+    if (!needle) return members;
+    return members.filter((member) =>
+      [member.name, member.email, roleLabel(member.role)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [members, memberQuery]);
+
+  const filteredInvites = useMemo(() => {
+    const needle = inviteQuery.trim().toLowerCase();
+    if (!needle) return invites;
+    return invites.filter((invite) => {
+      const hay = [invite.recipientEmail, invite.status, roleLabel(invite.role)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [invites, inviteQuery]);
+
+  const dashboardTabs = useMemo(() => {
+    const items: { id: "orders" | "members" | "invitations" | "requests"; label: string; icon: any }[] = [
+      { id: "orders", label: "Orders", icon: ClipboardList },
+      { id: "members", label: "Members", icon: Users },
+    ];
+    if (isAdmin) {
+      items.push({ id: "invitations", label: "Invitations", icon: Mail });
+    }
+    if (isAdmin) {
+      items.push({ id: "requests", label: "Requests", icon: ClipboardList });
+    }
+    return items;
+  }, [isAdmin]);
 
   return (
     <div className="min-h-screen bg-background">
+      {syncing ? <FullPageSyncLoader progress={syncProgress} /> : null}
       <Header />
 
       <main className="container py-8 md:py-16">
         {!isCustomer ? (
           <CustomerAuthCard />
         ) : (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             {/* Hero */}
             <div className="text-center mb-12 animate-fade-in">
               <div className="mx-auto mb-4">
@@ -449,288 +857,602 @@ const Index: React.FC = () => {
               </p>
             </div>
 
-            {/* Main Card */}
-            <Card
-              className="shadow-xl border-0 overflow-hidden animate-slide-up"
-              style={{ animationDelay: "0.1s" }}
-            >
-              <CardContent className="p-6 md:p-8">
-                {/* Pickup Number Input */}
-                <div className="mb-8">
-                  <label
-                    htmlFor="pickup-number"
-                    className="block text-sm font-medium text-foreground mb-2"
-                  >
-                    Search Orders
-                  </label>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input
-                      id="pickup-number"
-                      type="text"
-                      placeholder="Search by order number or job name"
-                      value={orderQuery}
-                      onChange={(e) => {
-                        setOrderQuery(e.target.value);
-                        setError("");
-                      }}
-                      className="pl-12 h-14 text-lg"
-                    />
-                  </div>
-                  {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
-                  {actionError ? <p className="mt-2 text-sm text-destructive">{actionError}</p> : null}
-                </div>
+            <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+              <aside className="space-y-4">
+                <Card className="border-border/60">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Account Dashboard</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {dashboardTabs.map((tab) => (
+                      <Button
+                        key={tab.id}
+                        variant={dashboardTab === tab.id ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setDashboardTab(tab.id)}
+                      >
+                        <tab.icon className="h-4 w-4" />
+                        {tab.label}
+                      </Button>
+                    ))}
+                  </CardContent>
+                </Card>
 
-                <div className="mb-8">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-medium text-foreground">Your Orders</h2>
-                    <span className="text-xs text-muted-foreground">
-                      {ordersLoading ? "Loading..." : `${filteredOrders.length} orders`}
-                    </span>
-                  </div>
-
-                  <Button variant="hero" size="lg" className="w-full mb-4" onClick={handleContinue}>
-                    Select Items for Pickup →
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-
-                  {ordersError ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-destructive">{ordersError}</p>
-                      {reauthRequired ? (
-                        <div className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-sm text-muted-foreground">
-                          <p className="mb-2">
-                            Your session looks out of date. Please sign out and back in to refresh your
-                            account details.
-                          </p>
-                          <Button variant="outline" size="sm" onClick={() => signOut()}>
-                            Sign out
-                          </Button>
-                        </div>
+                {isDeveloper ? (
+                  <Card className="border-border/60">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Developer Access</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Override BAID</label>
+                        <Input
+                          value={overrideInput}
+                          onChange={(event) => setOverrideInput(event.target.value.toUpperCase())}
+                          placeholder="BA1234567"
+                          maxLength={9}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={applyOverrideBaid}>
+                          Apply
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={clearOverrideBaid}>
+                          Clear
+                        </Button>
+                      </div>
+                      {overrideBaid ? (
+                        <p className="text-xs text-muted-foreground">
+                          Viewing BAID {overrideBaid}
+                        </p>
                       ) : null}
-                    </div>
-                  ) : ordersLoading ? (
-                    <p className="text-sm text-muted-foreground">Fetching your latest orders...</p>
-                  ) : filteredOrders.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No matching orders found.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {visibleOrders.map((order) => {
-                        const checked = selectedOrders.includes(order.orderNbr);
-                        const deliveryDate = order.deliveryDate
-                          ? new Date(order.deliveryDate)
-                          : null;
-                        const dateLabel = deliveryDate
-                          ? deliveryDate.toLocaleDateString()
-                          : "No delivery date";
-                        const isScheduled = Boolean(order.appointment);
-                        const isPickupReady = order.isPickupReady !== false;
-                        const { locationIds, unknownWarehouses } = resolvePickupLocationIds(
-                          order.warehouses
-                        );
-                        const locationLabel =
-                          locationIds.length === 1
-                            ? pickupLocations.find((loc) => loc.id === locationIds[0])?.name ??
-                              "Unknown location"
-                            : locationIds.length > 1
-                            ? "Multiple locations"
-                            : unknownWarehouses.length
-                            ? "No pickup location"
-                            : "No pickup location";
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </aside>
 
-                        return (
-                          <div
-                            key={order.id}
-                            className="flex items-start gap-4 rounded-xl border border-border/60 bg-white p-4 transition hover:border-border cursor-pointer"
-                            onClick={(event) =>
-                              handleOrderCardClick(
-                                event,
-                                order.orderNbr,
-                                isScheduled,
-                                isPickupReady
-                              )
-                            }
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() => toggleOrder(order.orderNbr)}
-                              className="mt-1"
-                              disabled={isScheduled || !isPickupReady}
-                            />
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-semibold text-foreground">
-                                    {order.orderNbr}
-                                  </span>
-                                  {!isPickupReady ? (
-                                    <Badge variant="destructive">Not Ready</Badge>
-                                  ) : null}
-                                  {order.paymentStatus ? (
-                                    <Badge variant="outline">{order.paymentStatus}</Badge>
-                                  ) : null}
-                                  {isScheduled && order.appointment ? (
-                                    <Badge variant="outline">
-                                      {order.appointment.status}
-                                    </Badge>
-                                  ) : null}
-                                </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="bg-white hover:bg-white"
-                                  asChild
-                                >
-                                  <Link href={`/orders/${order.orderNbr}`}>View Order</Link>
+              <div className="space-y-6">
+                {dashboardTab === "orders" ? (
+                  <Card
+                    className="shadow-xl border-0 overflow-hidden animate-slide-up"
+                    style={{ animationDelay: "0.1s" }}
+                  >
+                    <CardContent className="p-6 md:p-8">
+                      <div className="mb-8">
+                        <label
+                          htmlFor="pickup-number"
+                          className="block text-sm font-medium text-foreground mb-2"
+                        >
+                          Search Orders
+                        </label>
+                        <div className="relative">
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="pickup-number"
+                            type="text"
+                            placeholder="Search by order number or job name"
+                            value={orderQuery}
+                            onChange={(e) => {
+                              setOrderQuery(e.target.value);
+                              setError("");
+                            }}
+                            className="pl-12 h-14 text-lg"
+                          />
+                        </div>
+                        {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
+                        {actionError ? (
+                          <p className="mt-2 text-sm text-destructive">{actionError}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="mb-8">
+                        <div className="flex items-center justify-between mb-3">
+                          <h2 className="text-sm font-medium text-foreground">Your Orders</h2>
+                          <span className="text-xs text-muted-foreground">
+                            {ordersLoading ? "Loading..." : `${filteredOrders.length} orders`}
+                          </span>
+                        </div>
+
+                        <Button
+                          variant="hero"
+                          size="lg"
+                          className="w-full mb-4"
+                          onClick={handleContinue}
+                        >
+                          Select Items for Pickup
+                          <ArrowRight className="h-4 w-4 ml-2" />
+                        </Button>
+
+                        {ordersError ? (
+                          <div className="space-y-2">
+                            <p className="text-sm text-destructive">{ordersError}</p>
+                            {reauthRequired ? (
+                              <div className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-sm text-muted-foreground">
+                                <p className="mb-2">
+                                  Your session looks out of date. Please sign out and back in to refresh your
+                                  account details.
+                                </p>
+                                <Button variant="outline" size="sm" onClick={() => signOut()}>
+                                  Sign out
                                 </Button>
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                {order.jobName || order.customerName}
-                              </div>
-                              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                                <span>Type: {order.orderType}</span>
-                                <span>Status: {order.status}</span>
-                                <span>Delivery: {dateLabel}</span>
-                                <span>Pickup: {locationLabel}</span>
-                              </div>
-                              {isScheduled && order.appointment ? (
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <div className="text-sm font-semibold text-primary">
-                                    {formatAppointmentTime(order.appointment.startAt, order.appointment.endAt)}
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <Button
-                                      variant="hero"
-                                      size="sm"
-                                      onClick={() => handleReschedule(order.appointment)}
-                                    >
-                                      Reschedule
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
-                                      onClick={() => openCancelDialog(order.appointment!, order.orderNbr)}
-                                    >
-                                      Cancel
-                                    </Button>
+                            ) : null}
+                          </div>
+                        ) : ordersLoading ? (
+                          <p className="text-sm text-muted-foreground">Fetching your latest orders...</p>
+                        ) : filteredOrders.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No matching orders found.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {visibleOrders.map((order) => {
+                              const checked = selectedOrders.includes(order.orderNbr);
+                              const deliveryDate = order.deliveryDate
+                                ? new Date(order.deliveryDate)
+                                : null;
+                              const dateLabel = deliveryDate
+                                ? deliveryDate.toLocaleDateString()
+                                : "No delivery date";
+                              const isScheduled = Boolean(order.appointment);
+                              const isPickupReady = order.isPickupReady !== false;
+                              const lastPickupLabel = formatLastPickup(order.lastPickupAt);
+                              const { locationIds, unknownWarehouses } = resolvePickupLocationIds(
+                                order.warehouses
+                              );
+                              const locationLabel =
+                                locationIds.length === 1
+                                  ? pickupLocations.find((loc) => loc.id === locationIds[0])?.name ??
+                                    "Unknown location"
+                                  : locationIds.length > 1
+                                  ? "Multiple locations"
+                                  : unknownWarehouses.length
+                                  ? "No pickup location"
+                                  : "No pickup location";
+
+                              return (
+                                <div
+                                  key={order.id}
+                                  className={`flex items-start gap-4 rounded-xl border border-border/60 bg-white p-4 transition hover:border-border cursor-pointer ${
+                                    isScheduled ? "bg-muted/40 opacity-70" : ""
+                                  }`}
+                                  onClick={(event) =>
+                                    handleOrderCardClick(
+                                      event,
+                                      order.orderNbr,
+                                      isScheduled,
+                                      isPickupReady
+                                    )
+                                  }
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={() => toggleOrder(order.orderNbr)}
+                                    className="mt-1"
+                                    disabled={isScheduled || !isPickupReady}
+                                  />
+                                  <div className="flex-1 space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-semibold text-foreground">
+                                          {order.orderNbr}
+                                        </span>
+                                        {!isPickupReady ? (
+                                          <Badge variant="destructive">Not Ready</Badge>
+                                        ) : null}
+                                        {order.paymentStatus ? (
+                                          <Badge variant="outline">{order.paymentStatus}</Badge>
+                                        ) : null}
+                                        {isScheduled && order.appointment ? (
+                                          <Badge variant="outline">
+                                            {order.appointment.status}
+                                          </Badge>
+                                        ) : null}
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="bg-white hover:bg-secondary/60"
+                                        asChild
+                                      >
+                                        <Link href={`/orders/${order.orderNbr}`}>View Order</Link>
+                                      </Button>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {order.jobName || order.customerName}
+                                    </div>
+                                    {lastPickupLabel ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        {lastPickupLabel}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                      <span>Type: {order.orderType}</span>
+                                      <span>Status: {order.status}</span>
+                                      <span>Delivery: {dateLabel}</span>
+                                      <span>Pickup: {locationLabel}</span>
+                                    </div>
+                                    {isScheduled && order.appointment ? (
+                                      <div className="flex flex-wrap items-center gap-3">
+                                        <div className="text-sm font-semibold text-primary">
+                                          {formatAppointmentTime(order.appointment.startAt, order.appointment.endAt)}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            variant="hero"
+                                            size="sm"
+                                            onClick={() => handleReschedule(order.appointment)}
+                                          >
+                                            Reschedule
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
+                                            onClick={() => openCancelDialog(order.appointment!, order.orderNbr)}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </div>
-                              ) : null}
+                              );
+                            })}
+                            {remainingOrders > 0 ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() =>
+                                  setVisibleOrderCount((prev) => prev + ORDER_PREVIEW_LIMIT)
+                                }
+                              >
+                                Show more orders (+{remainingOrders})
+                              </Button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mb-8 rounded-xl border border-border/60 bg-secondary/20 p-4">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <h2 className="text-sm font-medium text-foreground">Pickup Location</h2>
+                          <span className="text-xs text-muted-foreground">
+                            {selectedOrders.length
+                              ? "Based on your selected orders"
+                              : "Select orders to see location"}
+                          </span>
+                        </div>
+
+                        {selectedOrders.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Choose orders above to see your pickup location.
+                          </p>
+                        ) : selectedLocationState.hasUnknown ? (
+                          <p className="text-sm text-destructive">
+                            No pickup location near you for one or more items. Please contact your sales person to coordinate.
+                          </p>
+                        ) : selectedLocationState.locationIds.length === 1 ? (
+                          (() => {
+                            const loc = pickupLocations.find(
+                              (location) => location.id === selectedLocationState.locationIds[0]
+                            );
+                            if (!loc) {
+                              return (
+                                <p className="text-sm text-destructive">
+                                  No pickup location near you. Please contact your sales person to coordinate.
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="space-y-1">
+                                <p className="font-semibold text-foreground">{loc.name}</p>
+                                <p className="text-sm text-muted-foreground">{loc.address}</p>
+                                <p className="text-xs text-muted-foreground">{loc.instructions}</p>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                              Your selected orders require multiple pickup locations. You'll schedule separate
+                              appointments for each location.
+                            </p>
+                            <div className="space-y-3">
+                              {selectedLocationState.groups.map((group) => {
+                                const loc = pickupLocations.find((location) => location.id === group.locationId);
+                                if (!loc) return null;
+                                return (
+                                  <div
+                                    key={group.locationId}
+                                    className="rounded-lg border border-border/60 bg-background/70 p-3"
+                                  >
+                                    <p className="font-semibold text-foreground">{loc.name}</p>
+                                    <p className="text-sm text-muted-foreground">{loc.address}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {group.orderNbrs.length} order{group.orderNbrs.length === 1 ? "" : "s"}
+                                    </p>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        );
-                      })}
-                      {remainingOrders > 0 ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() =>
-                            setVisibleOrderCount((prev) => prev + ORDER_PREVIEW_LIMIT)
-                          }
-                        >
-                          Show more orders (+{remainingOrders})
+                        )}
+                      </div>
+
+                      <Button variant="hero" size="xl" className="w-full" onClick={handleContinue}>
+                        Select Items for Pickup
+                        <ArrowRight className="h-5 w-5" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {dashboardTab === "members" ? (
+                  <Card className="border-border/60">
+                    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <CardTitle>Members</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          Manage who has access to this account.
+                        </p>
+                      </div>
+                      {isAdmin ? (
+                        <Button onClick={() => setInviteDialogOpen(true)}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Add member
                         </Button>
                       ) : null}
-                    </div>
-                  )}
-                </div>
-
-                {/* Pickup Location */}
-                <div className="mb-8 rounded-xl border border-border/60 bg-secondary/20 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <h2 className="text-sm font-medium text-foreground">Pickup Location</h2>
-                    <span className="text-xs text-muted-foreground">
-                      {selectedOrders.length ? "Based on your selected orders" : "Select orders to see location"}
-                    </span>
-                  </div>
-
-                  {selectedOrders.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Choose orders above to see your pickup location.
-                    </p>
-                  ) : selectedLocationState.hasUnknown ? (
-                    <p className="text-sm text-destructive">
-                      No pickup location near you for one or more items. Please contact your sales person to coordinate.
-                    </p>
-                  ) : selectedLocationState.locationIds.length === 1 ? (
-                    (() => {
-                      const loc = pickupLocations.find(
-                        (location) => location.id === selectedLocationState.locationIds[0]
-                      );
-                      if (!loc) {
-                        return (
-                          <p className="text-sm text-destructive">
-                            No pickup location near you. Please contact your sales person to coordinate.
-                          </p>
-                        );
-                      }
-                      return (
-                        <div className="space-y-1">
-                          <p className="font-semibold text-foreground">{loc.name}</p>
-                          <p className="text-sm text-muted-foreground">{loc.address}</p>
-                          <p className="text-xs text-muted-foreground">{loc.instructions}</p>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Your selected orders require multiple pickup locations. You'll schedule separate
-                        appointments for each location.
-                      </p>
-                      <div className="space-y-3">
-                        {selectedLocationState.groups.map((group) => {
-                          const loc = pickupLocations.find((location) => location.id === group.locationId);
-                          if (!loc) return null;
-                          return (
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Input
+                        placeholder="Search members"
+                        value={memberQuery}
+                        onChange={(event) => setMemberQuery(event.target.value)}
+                      />
+                      {membersError ? (
+                        <p className="text-sm text-destructive">{membersError}</p>
+                      ) : membersLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading members...</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {filteredMembers.map((member) => (
                             <div
-                              key={group.locationId}
-                              className="rounded-lg border border-border/60 bg-background/70 p-3"
+                              key={member.userId}
+                              className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 md:flex-row md:items-center md:justify-between"
                             >
-                              <p className="font-semibold text-foreground">{loc.name}</p>
-                              <p className="text-sm text-muted-foreground">{loc.address}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {group.orderNbrs.length} order{group.orderNbrs.length === 1 ? "" : "s"}
-                              </p>
+                              <div>
+                                <p className="font-medium text-foreground">{member.name}</p>
+                                <p className="text-xs text-muted-foreground">{member.email}</p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline">{roleLabel(member.role)}</Badge>
+                                {isAdmin ? (
+                                  <Select
+                                    value={member.role}
+                                    onValueChange={(value) =>
+                                      handleUpdateMemberRole(member.userId, value as "ADMIN" | "PM")
+                                    }
+                                  >
+                                    <SelectTrigger className="w-[140px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="ADMIN">Admin</SelectItem>
+                                      <SelectItem value="PM">Manager</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : null}
+                                {isAdmin && member.userId !== user?.id ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveMember(member.userId)}
+                                    disabled={memberActionId === member.userId}
+                                  >
+                                    <UserMinus className="h-4 w-4 mr-1" />
+                                    Remove
+                                  </Button>
+                                ) : null}
+                              </div>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {dashboardTab === "invitations" && isAdmin ? (
+                  <Card className="border-border/60">
+                    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <CardTitle>Invitations</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          Track invite codes sent to new users.
+                        </p>
                       </div>
-                    </div>
-                  )}
-                </div>
+                      {isAdmin ? (
+                        <Button onClick={() => setInviteDialogOpen(true)}>
+                          <Mail className="h-4 w-4 mr-2" />
+                          New invite
+                        </Button>
+                      ) : null}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Input
+                        placeholder="Search invites"
+                        value={inviteQuery}
+                        onChange={(event) => setInviteQuery(event.target.value)}
+                      />
+                      {invitesError ? (
+                        <p className="text-sm text-destructive">{invitesError}</p>
+                      ) : invitesLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading invites...</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {filteredInvites.map((invite) => (
+                            <div
+                              key={invite.id}
+                              className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 md:flex-row md:items-center md:justify-between"
+                            >
+                              <div>
+                                <p className="font-medium text-foreground">
+                                  {invite.recipientEmail || invite.recipientPhone || "Invite"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {roleLabel(invite.role)} - {new Date(invite.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={statusBadgeVariant(invite.status)}>{invite.status}</Badge>
+                                {isAdmin && invite.status === "Pending" ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openResendInvite(invite)}
+                                    disabled={inviteActionId === invite.id}
+                                  >
+                                    Resend
+                                  </Button>
+                                ) : null}
+                                {isAdmin && invite.status === "Pending" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRevokeInvite(invite.id)}
+                                    disabled={inviteActionId === invite.id}
+                                  >
+                                    Revoke
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : null}
 
-                {/* Continue Button */}
-                <Button variant="hero" size="xl" className="w-full" onClick={handleContinue}>
-                  Select Items for Pickup →
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Features */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-              {features.map((feature, index) => (
-                <div
-                  key={feature.title}
-                  className="text-center animate-slide-up"
-                  style={{ animationDelay: `${0.2 + index * 0.1}s` }}
-                >
-                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-secondary text-primary mb-4">
-                    <feature.icon className="h-6 w-6" />
-                  </div>
-                  <h3 className="font-display font-semibold text-foreground mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">{feature.description}</p>
-                </div>
-              ))}
+                {dashboardTab === "requests" && isAdmin ? (
+                  <Card className="border-border/60">
+                    <CardHeader>
+                      <CardTitle>Requests</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        Recent invite requests and verification attempts.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {requestsError ? (
+                        <p className="text-sm text-destructive">{requestsError}</p>
+                      ) : requestsLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading requests...</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {requests.map((req) => (
+                            <div
+                              key={req.id}
+                              className="rounded-lg border border-border/60 bg-background/80 p-3 text-sm"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-foreground">
+                                  {req.baid || "Unknown BAID"}
+                                </span>
+                                <Badge variant={req.result === "success" ? "default" : "outline"}>
+                                  {req.result}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {req.reason || "No reason"} - {new Date(req.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
             </div>
           </div>
+          
         )}
       </main>
+      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send an invite</DialogTitle>
+            <DialogDescription>
+              Invite a teammate to access this account.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Full name</label>
+              <Input
+                value={inviteForm.name}
+                onChange={(event) =>
+                  setInviteForm((prev) => ({ ...prev, name: event.target.value }))
+                }
+                placeholder="Name"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Email</label>
+              <Input
+                type="email"
+                value={inviteForm.email}
+                onChange={(event) =>
+                  setInviteForm((prev) => ({ ...prev, email: event.target.value }))
+                }
+                placeholder="name@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Phone (optional)</label>
+              <Input
+                value={inviteForm.phone}
+                onChange={(event) =>
+                  setInviteForm((prev) => ({ ...prev, phone: event.target.value }))
+                }
+                placeholder="8015551212"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Role</label>
+              <Select
+                value={inviteForm.role}
+                onValueChange={(value) =>
+                  setInviteForm((prev) => ({ ...prev, role: value as "ADMIN" | "PM" }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="PM">Manager</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => setInviteDialogOpen(false)}
+              disabled={inviteSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleInviteSubmit} disabled={inviteSubmitting}>
+              {inviteSubmitting ? "Sending..." : "Send invite"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -794,4 +1516,3 @@ const Index: React.FC = () => {
 };
 
 export default Index;
-

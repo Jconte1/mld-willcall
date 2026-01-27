@@ -8,6 +8,10 @@ const schema = z.object({
     .string()
     .transform((v) => v.replace(/\s+/g, "").toUpperCase())
     .refine((v) => /^BA\d{7}$/.test(v), { message: "BAID must be BA followed by 7 digits" }),
+  zip: z
+    .string()
+    .transform((v) => v.replace(/\D/g, "").slice(0, 5))
+    .refine((v) => /^\d{5}$/.test(v), { message: "ZIP must be 5 digits" }),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +31,10 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // Backend will normalize/case-handle; we still pass a clean value.
-      body: JSON.stringify({ baid: parsed.data.baid.toLowerCase() }),
+      body: JSON.stringify({
+        baid: parsed.data.baid.toLowerCase(),
+        zip: parsed.data.zip,
+      }),
     });
 
     const data = await res.json().catch(() => ({}));

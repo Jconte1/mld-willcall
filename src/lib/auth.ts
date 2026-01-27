@@ -22,6 +22,8 @@ type CustomerUser = {
   baid?: string | null;
   phone?: string | null;
   emailVerified?: boolean;
+  accountRole?: string | null;
+  isDeveloper?: boolean;
 };
 
 export const authOptions: NextAuthOptions = {
@@ -117,6 +119,8 @@ export const authOptions: NextAuthOptions = {
         (token as any).phone = (user as any).phone ?? null;
         (token as any).emailVerified = (user as any).emailVerified ?? false;
         (token as any).name = (user as any).name ?? null;
+        (token as any).accountRole = (user as any).accountRole ?? null;
+        (token as any).isDeveloper = (user as any).isDeveloper ?? false;
       }
 
       // Client-side session.update(...)
@@ -133,6 +137,8 @@ export const authOptions: NextAuthOptions = {
         (token as any).phone = (session.user as any).phone ?? (token as any).phone;
         (token as any).emailVerified = (session.user as any).emailVerified ?? (token as any).emailVerified;
         (token as any).name = (session.user as any).name ?? (token as any).name;
+        (token as any).accountRole = (session.user as any).accountRole ?? (token as any).accountRole;
+        (token as any).isDeveloper = (session.user as any).isDeveloper ?? (token as any).isDeveloper;
       }
 
       return token;
@@ -155,6 +161,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).baid = (token as any).baid ?? null;
         (session.user as any).phone = (token as any).phone ?? null;
         (session.user as any).emailVerified = Boolean((token as any).emailVerified);
+        (session.user as any).accountRole = (token as any).accountRole ?? null;
+        (session.user as any).isDeveloper = Boolean((token as any).isDeveloper);
       }
       return session;
     },

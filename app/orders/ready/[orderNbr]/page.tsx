@@ -40,6 +40,12 @@ type OrderReadyResponse = {
     locationId: string;
     orders: { orderNbr: string }[];
   } | null;
+  payment?: {
+    orderTotal: number | null;
+    unpaidBalance: number | null;
+    terms: string | null;
+    status: string | null;
+  } | null;
   orderLines?: {
     inventoryId: string | null;
     lineDescription: string | null;
@@ -114,15 +120,36 @@ function ReadyContent() {
 
   const appointment = data?.appointment ?? null;
   const orderLines = data?.orderLines ?? [];
+  const creditHoldActive = useMemo(() => {
+    const status = (data?.payment?.status ?? "").trim().toLowerCase();
+    return status === "credit hold";
+  }, [data]);
+  const sortedOrderLines = useMemo(() => {
+    return [...orderLines].sort((a, b) => {
+      const aQty = Math.max(0, Number(a.openQty ?? 0));
+      const bQty = Math.max(0, Number(b.openQty ?? 0));
+      if (aQty > 0 && bQty <= 0) return -1;
+      if (bQty > 0 && aQty <= 0) return 1;
+      return 0;
+    });
+  }, [orderLines]);
   const visibleOrderLines = useMemo(
-    () => orderLines.slice(0, visibleItemCount),
-    [orderLines, visibleItemCount]
+    () => sortedOrderLines.slice(0, visibleItemCount),
+    [sortedOrderLines, visibleItemCount]
   );
-  const remainingOrderLines = Math.max(orderLines.length - visibleItemCount, 0);
+  const remainingOrderLines = Math.max(sortedOrderLines.length - visibleItemCount, 0);
 
-  const scheduleDisabled = Boolean(appointment);
+  const scheduleDisabled = Boolean(appointment) || creditHoldActive;
 
   const scheduleNow = () => {
+    if (creditHoldActive) {
+      toast({
+        title: "Account on credit hold",
+        description:
+          "Your account is on credit hold. No pick ups may be scheduled at this time. Please call our accounting team at 801-466-0990 ext. 3 for more information.",
+      });
+      return;
+    }
     if (!data?.orderReady) return;
     const contactName = data.orderReady.contactName || "";
     const [firstName, ...rest] = contactName.split(" ").filter(Boolean);
@@ -267,11 +294,28 @@ function ReadyContent() {
                   <ClipboardList className="h-4 w-4 text-muted-foreground" />
                   <span className="font-semibold">Items on Order</span>
                 </div>
+                {creditHoldActive ? (
+                  <div className="rounded-lg border border-[#d24f39] bg-[#fdf5f2] p-3 text-xs text-[#b13d2b]">
+                    <p className="font-semibold">Account on credit hold.</p>
+                    <p className="mt-1">
+                      Your account is on credit hold. No pick ups may be scheduled at this time.
+                      Please call our accounting team at 801-466-0990 ext. 3 for more information.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap justify-start">
                   <Button
                     variant="hero"
                     disabled={scheduleDisabled}
                     onClick={() => {
+                      if (creditHoldActive) {
+                        toast({
+                          title: "Account on credit hold",
+                          description:
+                            "Your account is on credit hold. No pick ups may be scheduled at this time. Please call our accounting team at 801-466-0990 ext. 3 for more information.",
+                        });
+                        return;
+                      }
                       if (scheduleDisabled) {
                         toast({ title: "Already scheduled" });
                         return;
@@ -334,6 +378,14 @@ function ReadyContent() {
                   variant="hero"
                   disabled={scheduleDisabled}
                   onClick={() => {
+                    if (creditHoldActive) {
+                      toast({
+                        title: "Account on credit hold",
+                        description:
+                          "Your account is on credit hold. No pick ups may be scheduled at this time. Please call our accounting team at 801-466-0990 ext. 3 for more information.",
+                      });
+                      return;
+                    }
                     if (scheduleDisabled) {
                       toast({ title: "Already scheduled" });
                       return;

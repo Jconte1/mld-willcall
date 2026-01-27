@@ -5,6 +5,11 @@ import { authOptions } from "@/lib/auth";
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const token = session?.user?.staffToken;
+  console.info("[staff-change-password][api] session", {
+    hasSession: Boolean(session),
+    userId: session?.user?.id,
+    hasToken: Boolean(token),
+  });
   if (!token) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
