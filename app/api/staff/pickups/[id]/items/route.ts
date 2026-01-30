@@ -20,30 +20,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ message: "Staff backend not configured" }, { status: 501 });
   }
 
-  const res = await fetch(`${STAFF_API_BASE_URL}/api/staff/pickups/${params.id}`, {
+  const res = await fetch(`${STAFF_API_BASE_URL}/api/staff/pickups/${params.id}/items`, {
     headers: authHeader,
   });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
-}
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  const authHeader = getAuthHeader(session);
-  if (!authHeader) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!STAFF_API_BASE_URL) {
-    return NextResponse.json({ message: "Staff backend not configured" }, { status: 501 });
-  }
-
-  const body = await req.json().catch(() => ({}));
-  const res = await fetch(`${STAFF_API_BASE_URL}/api/staff/pickups/${params.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...authHeader },
-    body: JSON.stringify(body),
-  });
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }

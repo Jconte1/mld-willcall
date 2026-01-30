@@ -41,6 +41,38 @@ type StaffPickup = {
   orders: { orderNbr: string }[];
 };
 
+type StaffOrderLine = {
+  id: string;
+  orderNbr: string;
+  inventoryId: string | null;
+  lineDescription: string | null;
+  openQty: number | null;
+  orderQty: number | null;
+  warehouse: string | null;
+};
+
+type StaffAppointmentLine = {
+  id: string;
+  orderNbr: string;
+  inventoryId: string;
+  lineId: string | null;
+  qtySelected: number;
+  lineDescription: string | null;
+};
+
+type StaffSelectedItem = {
+  lineId?: string;
+  inventoryId: string;
+  description?: string | null;
+  maxQty?: number;
+  qty: number;
+};
+
+type StaffOrderSelection = {
+  orderNbr: string;
+  items: StaffSelectedItem[];
+};
+
 type LayoutItem = StaffPickup & {
   column: number;
   columnCount: number;
@@ -176,6 +208,16 @@ export default function StaffPickupsPage() {
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [notifyCustomer, setNotifyCustomer] = useState(true);
   const [cancelReason, setCancelReason] = useState("");
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState("");
+  const [orderLinesByOrder, setOrderLinesByOrder] = useState<Record<string, StaffOrderLine[]>>({});
+  const [selectedItems, setSelectedItems] = useState<StaffOrderSelection[]>([]);
+  const [itemsNotifyOpen, setItemsNotifyOpen] = useState(false);
+  const [notifyItemsCustomer, setNotifyItemsCustomer] = useState(true);
+  const [pendingItemsSave, setPendingItemsSave] = useState<StaffOrderSelection[] | null>(null);
+  const [customItemDrafts, setCustomItemDrafts] = useState<
+    Record<string, { inventoryId: string; qty: string; description: string }>
+  >({});
   const [pendingUpdate, setPendingUpdate] = useState<{
     id: string;
     body: Record<string, any>;
@@ -293,6 +335,48 @@ export default function StaffPickupsPage() {
     setLoading(false);
   };
 
+  const loadAppointmentItems = async (appointmentId: string) => {
+    setItemsLoading(true);
+    setItemsError("");
+    setOrderLinesByOrder({});
+    setSelectedItems([]);
+
+    const res = await fetch(`/api/staff/pickups/${appointmentId}/items`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setItemsError(data?.message ?? "Unable to load appointment items.");
+      setItemsLoading(false);
+      return;
+    }
+
+    const lines: StaffAppointmentLine[] = Array.isArray(data?.lines) ? data.lines : [];
+    const orderLines: StaffOrderLine[] = Array.isArray(data?.orderLines) ? data.orderLines : [];
+    const orderLineMap = orderLines.reduce((map, line) => {
+      const list = map.get(line.orderNbr) ?? [];
+      list.push(line);
+      map.set(line.orderNbr, list);
+      return map;
+    }, new Map<string, StaffOrderLine[]>());
+
+    const selections = Array.from(
+      lines.reduce((map, line) => {
+        const items = map.get(line.orderNbr) ?? [];
+        items.push({
+          lineId: line.lineId ?? undefined,
+          inventoryId: line.inventoryId,
+          description: line.lineDescription ?? undefined,
+          qty: Number(line.qtySelected),
+        });
+        map.set(line.orderNbr, items);
+        return map;
+      }, new Map<string, StaffSelectedItem[]>())
+    ).map(([orderNbr, items]) => ({ orderNbr, items }));
+
+    setOrderLinesByOrder(Object.fromEntries(orderLineMap));
+    setSelectedItems(selections);
+    setItemsLoading(false);
+  };
+
   useEffect(() => {
     fetchAppointments();
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
@@ -357,6 +441,39 @@ export default function StaffPickupsPage() {
       .map((s) => s.trim())
       .filter(Boolean);
 
+  const selectionsByOrder = useMemo(() => {
+    const map = new Map<string, Map<string, StaffSelectedItem>>();
+    selectedItems.forEach((selection) => {
+      const itemMap = new Map<string, StaffSelectedItem>();
+      selection.items.forEach((item) => {
+        const key = item.lineId ?? item.inventoryId;
+        itemMap.set(key, item);
+      });
+      map.set(selection.orderNbr, itemMap);
+    });
+    return map;
+  }, [selectedItems]);
+
+  const updateSelection = (orderNbr: string, updater: (items: StaffSelectedItem[]) => StaffSelectedItem[]) => {
+    setSelectedItems((prev) => {
+      const existing = prev.find((selection) => selection.orderNbr === orderNbr);
+      const nextItems = updater(existing?.items ?? []);
+      const next = prev.filter((selection) => selection.orderNbr !== orderNbr);
+      if (nextItems.length) {
+        next.push({ orderNbr, items: nextItems });
+      }
+      return next;
+    });
+  };
+
+  const normalizeSelectionsForSave = (selections: StaffOrderSelection[]) =>
+    selections
+      .map((selection) => ({
+        orderNbr: selection.orderNbr,
+        items: selection.items.filter((item) => item.qty > 0 && item.inventoryId),
+      }))
+      .filter((selection) => selection.items.length > 0);
+
   const hasNotifiableChange = (appointment: StaffPickup, payload: Record<string, any>, orderNbrs: string[]) => {
     const timeChanged =
       payload.startAt &&
@@ -413,12 +530,17 @@ export default function StaffPickupsPage() {
       status: appointment.status,
       orderNbrs: appointment.orders.map((o) => o.orderNbr).join(", "),
     });
+    loadAppointmentItems(appointment.id);
     setDialogOpen(true);
   };
 
   const handleOpenCreate = () => {
     setActiveAppointment(null);
     setIsCreating(true);
+    setItemsError("");
+    setItemsLoading(false);
+    setOrderLinesByOrder({});
+    setSelectedItems([]);
     const start = toIsoLocal(selectedDate);
     const end = toIsoLocal(new Date(selectedDate.getTime() + 30 * 60_000));
     const startDate = parseISO(start);
@@ -501,6 +623,108 @@ export default function StaffPickupsPage() {
     }
 
     await submitUpdate(activeAppointment.id, updateBody, false, "");
+  };
+
+  const handleToggleLine = (orderNbr: string, line: StaffOrderLine, checked: boolean) => {
+    const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+    if (!checked) {
+      updateSelection(orderNbr, (items) => items.filter((item) => item.lineId !== line.id));
+      return;
+    }
+    if (maxQty <= 0) return;
+    if (!line.inventoryId) return;
+    updateSelection(orderNbr, (items) => {
+      const existing = items.find((item) => item.lineId === line.id);
+      if (existing) return items;
+      return [
+        ...items,
+        {
+          lineId: line.id,
+          inventoryId: line.inventoryId,
+          description: line.lineDescription ?? undefined,
+          maxQty,
+          qty: Math.min(1, maxQty),
+        },
+      ];
+    });
+  };
+
+  const handleAdjustQty = (orderNbr: string, key: string, delta: number, maxQty?: number) => {
+    updateSelection(orderNbr, (items) =>
+      items
+        .map((item) => {
+          const itemKey = item.lineId ?? item.inventoryId;
+          if (itemKey !== key) return item;
+          const nextQty = Math.max(0, item.qty + delta);
+          const cappedQty = maxQty ? Math.min(nextQty, maxQty) : nextQty;
+          return { ...item, qty: cappedQty };
+        })
+        .filter((item) => item.qty > 0)
+    );
+  };
+
+  const handleSetQty = (orderNbr: string, key: string, value: number, maxQty?: number) => {
+    const qty = Number.isNaN(value) ? 0 : Math.max(0, Math.floor(value));
+    updateSelection(orderNbr, (items) =>
+      items
+        .map((item) => {
+          const itemKey = item.lineId ?? item.inventoryId;
+          if (itemKey !== key) return item;
+          const cappedQty = maxQty ? Math.min(qty, maxQty) : qty;
+          return { ...item, qty: cappedQty };
+        })
+        .filter((item) => item.qty > 0)
+    );
+  };
+
+  const handleRemoveItem = (orderNbr: string, key: string) => {
+    updateSelection(orderNbr, (items) => items.filter((item) => (item.lineId ?? item.inventoryId) !== key));
+  };
+
+  const handleAddCustomItem = (orderNbr: string) => {
+    const draft = customItemDrafts[orderNbr];
+    if (!draft?.inventoryId || !draft.qty) return;
+    const qty = Math.max(1, Math.floor(Number(draft.qty)));
+    updateSelection(orderNbr, (items) => [
+      ...items,
+      {
+        inventoryId: draft.inventoryId.trim(),
+        description: draft.description?.trim() || undefined,
+        qty,
+      },
+    ]);
+    setCustomItemDrafts((prev) => ({
+      ...prev,
+      [orderNbr]: { inventoryId: "", qty: "", description: "" },
+    }));
+  };
+
+  const handleSaveItems = async () => {
+    if (isViewer || !activeAppointment) return;
+    const payload = normalizeSelectionsForSave(selectedItems);
+    setPendingItemsSave(payload);
+    setNotifyItemsCustomer(true);
+    setItemsNotifyOpen(true);
+  };
+
+  const submitItemsUpdate = async (notify: boolean) => {
+    if (!activeAppointment || !pendingItemsSave) return;
+    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectedItems: pendingItemsSave,
+        notifyCustomer: notify,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setItemsError(data?.message ?? "Unable to update items.");
+      return;
+    }
+    await loadAppointmentItems(activeAppointment.id);
+    setItemsNotifyOpen(false);
+    setPendingItemsSave(null);
   };
 
   const handleDragDrop = async (event: React.DragEvent<HTMLDivElement>, day: Date) => {
@@ -766,166 +990,397 @@ export default function StaffPickupsPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle>{isCreating ? "Create Appointment" : "Edit Appointment"}</DialogTitle>
             <DialogDescription>Update appointment details and orders.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Location</Label>
-                <Select
-                  value={formData.locationId}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, locationId: value }))}
-                  disabled={isViewer}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accessibleLocations.map((locId) => {
-                      const location = pickupLocations.find((loc) => loc.id === locId);
-                      return (
-                        <SelectItem key={locId} value={locId}>
-                          {location?.name ?? locId.toUpperCase()}
+          <div className="grid gap-6 md:grid-cols-[1.1fr_1fr]">
+            <div className="grid gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Select
+                    value={formData.locationId}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, locationId: value }))}
+                    disabled={isViewer}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accessibleLocations.map((locId) => {
+                        const location = pickupLocations.find((loc) => loc.id === locId);
+                        return (
+                          <SelectItem key={locId} value={locId}>
+                            {location?.name ?? locId.toUpperCase()}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
+                    disabled={isViewer}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(STATUS_STYLES).map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
                         </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Customer Email</Label>
+                  <Input
+                    value={formData.customerEmail}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, customerEmail: event.target.value }))}
+                    placeholder="customer@email.com"
+                    disabled={isViewer}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input
+                    value={formData.customerPhone}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, customerPhone: event.target.value }))}
+                    placeholder="(555) 555-5555"
+                    disabled={isViewer}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input
+                    value={formData.customerFirstName}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, customerFirstName: event.target.value }))}
+                    placeholder="First name"
+                    disabled={isViewer}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input
+                    value={formData.customerLastName}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, customerLastName: event.target.value }))}
+                    placeholder="Last name"
+                    disabled={isViewer}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
-                  disabled={isViewer}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(STATUS_STYLES).map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Customer Email</Label>
+                <Label>Date</Label>
                 <Input
-                  value={formData.customerEmail}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, customerEmail: event.target.value }))}
-                  placeholder="customer@email.com"
+                  list="pickup-date-options"
+                  value={formData.date}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, date: event.target.value }))}
+                  placeholder="MM/DD/YYYY"
+                  disabled={isViewer}
+                />
+                <datalist id="pickup-date-options">
+                  {dateOptions.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted-foreground">MM/DD/YYYY</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Start Time</Label>
+                  <Select
+                    value={formData.startTime}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
+                    disabled={isViewer}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select start time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>End Time</Label>
+                  <Select
+                    value={formData.endTime}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
+                    disabled={isViewer}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select end time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Order Numbers (comma separated)</Label>
+                <Input
+                  value={formData.orderNbrs}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
+                  placeholder="C12345, C67890"
                   disabled={isViewer}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input
-                  value={formData.customerPhone}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, customerPhone: event.target.value }))}
-                  placeholder="(555) 555-5555"
-                  disabled={isViewer}
-                />
-              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>First Name</Label>
-                <Input
-                  value={formData.customerFirstName}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, customerFirstName: event.target.value }))}
-                  placeholder="First name"
-                  disabled={isViewer}
-                />
+            <div className="rounded-lg border border-border/60 bg-white p-4 space-y-4">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Items for this appointment</div>
+                <p className="text-xs text-muted-foreground">
+                  Adjust items and quantities for each order. 0 qty removes a line.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Last Name</Label>
-                <Input
-                  value={formData.customerLastName}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, customerLastName: event.target.value }))}
-                  placeholder="Last name"
-                  disabled={isViewer}
-                />
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Input
-                list="pickup-date-options"
-                value={formData.date}
-                onChange={(event) => setFormData((prev) => ({ ...prev, date: event.target.value }))}
-                placeholder="MM/DD/YYYY"
-                disabled={isViewer}
-              />
-              <datalist id="pickup-date-options">
-                {dateOptions.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground">MM/DD/YYYY</p>
-            </div>
+              {isCreating ? (
+                <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                  Save the appointment first, then reopen to manage items.
+                </div>
+              ) : itemsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading items...</div>
+              ) : itemsError ? (
+                <div className="text-sm text-destructive">{itemsError}</div>
+              ) : (
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                  {(activeAppointment?.orders ?? []).map((order) => {
+                    const orderNbr = order.orderNbr;
+                    const lines = orderLinesByOrder[orderNbr] ?? [];
+                    const selectedMap = selectionsByOrder.get(orderNbr);
+                    const customItems =
+                      selectedItems.find((selection) => selection.orderNbr === orderNbr)?.items.filter(
+                        (item) => !item.lineId
+                      ) ?? [];
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Start Time</Label>
-                <Select
-                  value={formData.startTime}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
-                  disabled={isViewer}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select start time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>End Time</Label>
-                <Select
-                  value={formData.endTime}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
-                  disabled={isViewer}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select end time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+                    return (
+                      <div key={orderNbr} className="rounded-md border border-border/60 p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold text-foreground">Order {orderNbr}</div>
+                          <div className="text-xs text-muted-foreground">{lines.length} lines</div>
+                        </div>
 
-            <div className="space-y-2">
-              <Label>Order Numbers (comma separated)</Label>
-              <Input
-                value={formData.orderNbrs}
-                onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
-                placeholder="C12345, C67890"
-                disabled={isViewer}
-              />
+                        <div className="space-y-2">
+                          {lines.map((line) => {
+                            const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+                            const selected = selectedMap?.get(line.id);
+                            const key = line.id;
+                            const canSelect = maxQty > 0 && Boolean(line.inventoryId);
+                            return (
+                              <div
+                                key={line.id}
+                                className={cn(
+                                  "rounded-md border border-border/60 p-2 flex items-start justify-between gap-3",
+                                  selected ? "bg-secondary/30" : "bg-background"
+                                )}
+                              >
+                                <label className="flex items-start gap-2">
+                                  <Checkbox
+                                    checked={Boolean(selected)}
+                                    onCheckedChange={(value) =>
+                                      handleToggleLine(orderNbr, line, Boolean(value))
+                                    }
+                                    disabled={isViewer || !canSelect}
+                                  />
+                                  <div>
+                                    <div className="text-sm font-medium text-foreground">
+                                      {line.inventoryId ?? "Item"}
+                                    </div>
+                                    {line.lineDescription ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        {line.lineDescription}
+                                      </div>
+                                    ) : null}
+                                    <div className="text-[11px] text-muted-foreground">
+                                      Open qty: {Number(line.openQty ?? 0)}
+                                    </div>
+                                  </div>
+                                </label>
+                                {selected ? (
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2"
+                                      onClick={() => handleAdjustQty(orderNbr, key, -1, maxQty)}
+                                      disabled={isViewer}
+                                    >
+                                      -
+                                    </Button>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={maxQty}
+                                      value={selected.qty}
+                                      onChange={(event) =>
+                                        handleSetQty(orderNbr, key, Number(event.target.value), maxQty)
+                                      }
+                                      className="h-7 w-16 text-center"
+                                      disabled={isViewer}
+                                    />
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2"
+                                      onClick={() => handleAdjustQty(orderNbr, key, 1, maxQty)}
+                                      disabled={isViewer}
+                                    >
+                                      +
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Custom items
+                          </div>
+                          {customItems.length ? (
+                            <div className="space-y-2">
+                              {customItems.map((item) => {
+                                const key = item.lineId ?? item.inventoryId;
+                                return (
+                                  <div
+                                    key={key}
+                                    className="rounded-md border border-border/60 p-2 flex items-center justify-between gap-3"
+                                  >
+                                    <div>
+                                      <div className="text-sm font-medium text-foreground">
+                                        {item.inventoryId}
+                                      </div>
+                                      {item.description ? (
+                                        <div className="text-xs text-muted-foreground">{item.description}</div>
+                                      ) : null}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        value={item.qty}
+                                        onChange={(event) =>
+                                          handleSetQty(orderNbr, key, Number(event.target.value))
+                                        }
+                                        className="h-7 w-16 text-center"
+                                        disabled={isViewer}
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        onClick={() => handleRemoveItem(orderNbr, key)}
+                                        disabled={isViewer}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_90px]">
+                            <Input
+                              value={customItemDrafts[orderNbr]?.inventoryId ?? ""}
+                              onChange={(event) =>
+                                setCustomItemDrafts((prev) => ({
+                                  ...prev,
+                                  [orderNbr]: {
+                                    inventoryId: event.target.value,
+                                    qty: prev[orderNbr]?.qty ?? "",
+                                    description: prev[orderNbr]?.description ?? "",
+                                  },
+                                }))
+                              }
+                              placeholder="Inventory ID"
+                              disabled={isViewer}
+                            />
+                            <Input
+                              type="number"
+                              min={1}
+                              value={customItemDrafts[orderNbr]?.qty ?? ""}
+                              onChange={(event) =>
+                                setCustomItemDrafts((prev) => ({
+                                  ...prev,
+                                  [orderNbr]: {
+                                    inventoryId: prev[orderNbr]?.inventoryId ?? "",
+                                    qty: event.target.value,
+                                    description: prev[orderNbr]?.description ?? "",
+                                  },
+                                }))
+                              }
+                              placeholder="Qty"
+                              disabled={isViewer}
+                            />
+                          </div>
+                          <Input
+                            value={customItemDrafts[orderNbr]?.description ?? ""}
+                            onChange={(event) =>
+                              setCustomItemDrafts((prev) => ({
+                                ...prev,
+                                [orderNbr]: {
+                                  inventoryId: prev[orderNbr]?.inventoryId ?? "",
+                                  qty: prev[orderNbr]?.qty ?? "",
+                                  description: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Description (optional)"
+                            disabled={isViewer}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAddCustomItem(orderNbr)}
+                            disabled={isViewer}
+                          >
+                            Add item
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Items are based on the current order list. Save orders first if they changed.
+                </p>
+                <Button variant="outline" onClick={handleSaveItems} disabled={isViewer || isCreating}>
+                  Save Items
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1003,6 +1458,49 @@ export default function StaffPickupsPage() {
               }}
             >
               Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={itemsNotifyOpen} onOpenChange={setItemsNotifyOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Notify customer about item changes?</DialogTitle>
+            <DialogDescription>
+              Send an update if you changed the items or quantities for this appointment.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={notifyItemsCustomer}
+                onChange={(event) => setNotifyItemsCustomer(event.target.checked)}
+                className="mt-1"
+              />
+              <span>Notify customer about these item updates.</span>
+            </label>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setItemsNotifyOpen(false);
+                setPendingItemsSave(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              onClick={async () => {
+                await submitItemsUpdate(notifyItemsCustomer);
+              }}
+            >
+              Save Items
             </Button>
           </DialogFooter>
         </DialogContent>

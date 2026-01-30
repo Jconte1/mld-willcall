@@ -88,6 +88,7 @@ const ConfirmationPage: React.FC = () => {
           vehicleInfo: formData.vehicleInfo,
           notes: formData.notes,
           groups: formData.appointmentGroups,
+          selectedItems: formData.selectedItems,
         }),
       });
 

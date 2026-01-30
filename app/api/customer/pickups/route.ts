@@ -15,6 +15,20 @@ const groupSchema = z.object({
   selectedSlots: z.array(slotSchema).min(1),
 });
 
+const selectedItemSchema = z.object({
+  lineId: z.string().optional(),
+  inventoryId: z.string().min(1),
+  qty: z.number().positive(),
+  description: z.string().optional().nullable(),
+  warehouse: z.string().optional().nullable(),
+  maxQty: z.number().optional(),
+});
+
+const selectedItemsSchema = z.object({
+  orderNbr: z.string().min(1),
+  items: z.array(selectedItemSchema),
+});
+
 const schema = z.object({
   userId: z.string().min(1).optional(),
   orderReadyToken: z.string().min(1).optional(),
@@ -27,6 +41,7 @@ const schema = z.object({
   vehicleInfo: z.string().optional(),
   notes: z.string().optional(),
   groups: z.array(groupSchema).min(1),
+  selectedItems: z.array(selectedItemsSchema).optional(),
 });
 
 export async function POST(req: Request) {
