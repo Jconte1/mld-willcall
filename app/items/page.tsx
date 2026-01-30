@@ -461,6 +461,15 @@ const ItemSelectionPage: React.FC = () => {
         <div className="max-w-4xl mx-auto space-y-6">
           <ProgressSteps steps={steps} currentStep={2} />
 
+          <div className="flex justify-between">
+            <Button variant="ghost" onClick={handleBack}>
+              Back
+            </Button>
+            <Button variant="hero" onClick={handleContinue} disabled={loading || creditHoldActive}>
+              Continue
+            </Button>
+          </div>
+
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle>Select Items for Pickup</CardTitle>

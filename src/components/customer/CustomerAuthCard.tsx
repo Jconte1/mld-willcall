@@ -539,7 +539,7 @@ export default function CustomerAuthCard() {
               </div>
 
               {showResend ? (
-                <div className="mt-4 rounded-lg border border-border/60 bg-secondary/20 p-4 space-y-3">
+                <div className="mt-4 rounded-lg border border-border/60 bg-white p-4 space-y-3">
                   <div>
                     <label className="text-xs text-muted-foreground">Order number</label>
                     <Input
@@ -581,13 +581,7 @@ export default function CustomerAuthCard() {
                     </div>
                   )}
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={onResendOrderReadyLink}
-                    disabled={resendSubmitting}
-                  >
+                  <Button type="button" variant="hero" className="w-full" onClick={onResendOrderReadyLink} disabled={resendSubmitting}>
                     {resendSubmitting ? "Sending..." : "Send pickup link"}
                   </Button>
                 </div>

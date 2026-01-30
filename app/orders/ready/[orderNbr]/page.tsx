@@ -220,6 +220,11 @@ function ReadyContent() {
               <CardTitle>Order Ready for Pickup</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-muted-foreground">
+              {appointment ? (
+                <div className="rounded-lg border border-[#717463] bg-[#717463] px-4 py-3 text-sm font-medium text-white">
+                  This order already has a pickup appointment scheduled.
+                </div>
+              ) : null}
               <div className="rounded-lg border border-border/60 bg-secondary/30 border-dashed p-4 space-y-3">
                 <div className="rounded-lg border border-border/60 bg-background/70 p-4">
                   <div className="flex flex-wrap gap-4 items-start text-sm">
@@ -366,12 +371,6 @@ function ReadyContent() {
                   <div className="text-xs text-muted-foreground">No items available.</div>
                 )}
               </div>
-
-              {appointment ? (
-                <div className="text-sm font-medium text-muted-foreground">
-                  This order already has a pickup appointment scheduled.
-                </div>
-              ) : null}
 
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button

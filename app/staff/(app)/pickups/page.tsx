@@ -48,7 +48,7 @@ type LayoutItem = StaffPickup & {
   height: number;
 };
 
-const START_HOUR = 8;
+const START_HOUR = 7;
 const END_HOUR = 17;
 const SLOT_MINUTES = 15;
 const SLOT_HEIGHT_WEEK = 64;

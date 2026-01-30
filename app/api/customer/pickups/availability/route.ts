@@ -3,6 +3,8 @@ import { z } from "zod";
 
 const CUSTOMER_API_BASE_URL = process.env.CUSTOMER_API_BASE_URL;
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   locationId: z.string().min(1),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -26,7 +28,13 @@ export async function GET(req: Request) {
   }
 
   const params = new URLSearchParams(parsed.data);
-  const res = await fetch(`${CUSTOMER_API_BASE_URL}/api/customer/pickups/availability?${params.toString()}`);
+  const res = await fetch(
+    `${CUSTOMER_API_BASE_URL}/api/customer/pickups/availability?${params.toString()}`,
+    { cache: "no-store" }
+  );
   const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json(data, {
+    status: res.status,
+    headers: { "Cache-Control": "no-store" },
+  });
 }
