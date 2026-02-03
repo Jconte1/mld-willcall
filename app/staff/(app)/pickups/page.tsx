@@ -741,7 +741,8 @@ export default function StaffPickupsPage() {
       return;
     }
     if (maxQty <= 0) return;
-    if (!line.inventoryId) return;
+    const inventoryId = line.inventoryId;
+    if (!inventoryId) return;
     updateSelection(orderNbr, (items) => {
       const existing = items.find((item) => item.lineId === line.id);
       if (existing) return items;
@@ -749,7 +750,7 @@ export default function StaffPickupsPage() {
         ...items,
         {
           lineId: line.id,
-          inventoryId: line.inventoryId,
+          inventoryId,
           description: line.lineDescription ?? undefined,
           maxQty,
           qty: Math.min(1, maxQty),
