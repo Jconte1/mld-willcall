@@ -321,6 +321,18 @@ const ItemSelectionPage: React.FC = () => {
                 group.pickedUpValue + selectedValue + remainingValue * 0.5 - paid
               );
 
+        console.log("[prepay-calc]", {
+          orderNbr: group.orderNbr,
+          orderTotal,
+          unpaidBalance,
+          paid,
+          selectedValue,
+          remainingValue,
+          pickedUpValue: group.pickedUpValue,
+          amountOwed,
+          terms,
+        });
+
         if (amountOwed <= 0) return null;
         return {
           orderNbr: group.orderNbr,
@@ -503,6 +515,10 @@ const ItemSelectionPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  <p className="mt-3 text-[11px] text-[#8f4a3f]">
+                    Estimate only. Amount owed is based on current tax rates and available item data.
+                    Final balance may vary due to freight or other order adjustments.
+                  </p>
                 </div>
               ) : null}
 

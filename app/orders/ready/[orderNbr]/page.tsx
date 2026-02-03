@@ -62,7 +62,8 @@ function ReadyContent() {
   const { updateFormData } = usePickup();
 
   const orderNbr = String(params.orderNbr || "");
-  const token = searchParams.get("token") || "";
+  const urlToken = searchParams.get("token") || "";
+  const [token, setToken] = useState(urlToken);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -86,11 +87,33 @@ function ReadyContent() {
   }, [loading]);
 
   useEffect(() => {
+    if (!orderNbr) return;
     let active = true;
+    const storageKey = `order-ready-token:${orderNbr}`;
+    const stored = typeof window !== "undefined" ? window.sessionStorage.getItem(storageKey) : null;
+    const resolved = urlToken || stored || "";
+
+    if (urlToken) {
+      window.sessionStorage.setItem(storageKey, urlToken);
+    } else if (stored) {
+      const next = new URL(window.location.href);
+      next.searchParams.set("token", stored);
+      router.replace(next.pathname + next.search);
+    }
+
+    setToken(resolved);
+    if (!resolved) {
+      setError("This link is missing its security token. Please reopen the link from your email.");
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     setLoading(true);
     setError("");
 
-    fetch(`/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(token)}`)
+    fetch(`/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(resolved)}`)
       .then((res) => res.json().then((payload) => ({ ok: res.ok, payload })))
       .then(({ ok, payload }) => {
         if (!active) return;
@@ -111,7 +134,7 @@ function ReadyContent() {
     return () => {
       active = false;
     };
-  }, [orderNbr, token]);
+  }, [orderNbr, urlToken, router]);
 
   const location = useMemo(() => {
     const locationId = data?.appointment?.locationId || data?.orderReady?.locationId;

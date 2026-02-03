@@ -39,6 +39,7 @@ type StaffPickup = {
   vehicleInfo: string | null;
   customerNotes: string | null;
   orders: { orderNbr: string }[];
+  shipments?: { orderNbr: string; shipmentNbr: string }[];
 };
 
 type StaffOrderLine = {
@@ -58,6 +59,12 @@ type StaffAppointmentLine = {
   lineId: string | null;
   qtySelected: number;
   lineDescription: string | null;
+};
+
+type StaffShipment = {
+  id?: string;
+  orderNbr: string;
+  shipmentNbr: string;
 };
 
 type StaffSelectedItem = {
@@ -85,6 +92,7 @@ const END_HOUR = 17;
 const SLOT_MINUTES = 15;
 const SLOT_HEIGHT_WEEK = 64;
 const SLOT_HEIGHT_DAY = 72;
+const SHIPMENT_FORMAT = /^SMT\d{7}$/;
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
   Scheduled: "bg-primary/10 text-primary",
@@ -194,6 +202,7 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
   const isViewer = session?.user?.role === "VIEWER";
+  const isAdmin = session?.user?.role === "ADMIN";
   const [view, setView] = useState<"day" | "week">("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [appointments, setAppointments] = useState<StaffPickup[]>([]);
@@ -212,12 +221,14 @@ export default function StaffPickupsPage() {
   const [itemsError, setItemsError] = useState("");
   const [orderLinesByOrder, setOrderLinesByOrder] = useState<Record<string, StaffOrderLine[]>>({});
   const [selectedItems, setSelectedItems] = useState<StaffOrderSelection[]>([]);
+  const [shipmentDrafts, setShipmentDrafts] = useState<Record<string, string[]>>({});
+  const [shipmentOriginals, setShipmentOriginals] = useState<Record<string, string[]>>({});
+  const [shipmentEditing, setShipmentEditing] = useState(false);
+  const [shipmentSaving, setShipmentSaving] = useState(false);
+  const [shipmentError, setShipmentError] = useState("");
   const [itemsNotifyOpen, setItemsNotifyOpen] = useState(false);
   const [notifyItemsCustomer, setNotifyItemsCustomer] = useState(true);
   const [pendingItemsSave, setPendingItemsSave] = useState<StaffOrderSelection[] | null>(null);
-  const [customItemDrafts, setCustomItemDrafts] = useState<
-    Record<string, { inventoryId: string; qty: string; description: string }>
-  >({});
   const [pendingUpdate, setPendingUpdate] = useState<{
     id: string;
     body: Record<string, any>;
@@ -340,6 +351,10 @@ export default function StaffPickupsPage() {
     setItemsError("");
     setOrderLinesByOrder({});
     setSelectedItems([]);
+    setShipmentDrafts({});
+    setShipmentOriginals({});
+    setShipmentEditing(false);
+    setShipmentError("");
 
     const res = await fetch(`/api/staff/pickups/${appointmentId}/items`);
     const data = await res.json().catch(() => ({}));
@@ -372,8 +387,25 @@ export default function StaffPickupsPage() {
       }, new Map<string, StaffSelectedItem[]>())
     ).map(([orderNbr, items]) => ({ orderNbr, items }));
 
+    const shipments: StaffShipment[] = Array.isArray(data?.shipments) ? data.shipments : [];
+    const groupedShipments = shipments.reduce((map, row) => {
+      const list = map.get(row.orderNbr) ?? [];
+      list.push(row.shipmentNbr);
+      map.set(row.orderNbr, list);
+      return map;
+    }, new Map<string, string[]>());
+
+    const shipmentObj = Object.fromEntries(
+      Array.from(groupedShipments.entries()).map(([orderNbr, values]) => [
+        orderNbr,
+        values.filter(Boolean),
+      ])
+    );
+
     setOrderLinesByOrder(Object.fromEntries(orderLineMap));
     setSelectedItems(selections);
+    setShipmentDrafts(shipmentObj);
+    setShipmentOriginals(shipmentObj);
     setItemsLoading(false);
   };
 
@@ -383,7 +415,8 @@ export default function StaffPickupsPage() {
 
   const filteredAppointments = useMemo(() => {
     let rows = appointments;
-    if (selectedLocations.length) {
+    const showAllLocations = isAdmin && selectedLocations.length === accessibleLocations.length;
+    if (selectedLocations.length && !showAllLocations) {
       rows = rows.filter((apt) => selectedLocations.includes(apt.locationId));
     }
     if (selectedStatuses.length) {
@@ -474,6 +507,78 @@ export default function StaffPickupsPage() {
       }))
       .filter((selection) => selection.items.length > 0);
 
+  const shipmentDirty = useMemo(() => {
+    const keys = new Set([...Object.keys(shipmentDrafts), ...Object.keys(shipmentOriginals)]);
+    for (const key of keys) {
+      const left = (shipmentDrafts[key] ?? []).filter(Boolean);
+      const right = (shipmentOriginals[key] ?? []).filter(Boolean);
+      if (left.length !== right.length) return true;
+      for (let i = 0; i < left.length; i += 1) {
+        if (left[i] !== right[i]) return true;
+      }
+    }
+    return false;
+  }, [shipmentDrafts, shipmentOriginals]);
+
+  const updateShipmentValue = (orderNbr: string, idx: number, value: string) => {
+    setShipmentDrafts((prev) => {
+      const next = [...(prev[orderNbr] ?? [])];
+      next[idx] = value.toUpperCase();
+      return { ...prev, [orderNbr]: next };
+    });
+  };
+
+  const addShipment = (orderNbr: string) => {
+    setShipmentDrafts((prev) => ({
+      ...prev,
+      [orderNbr]: [...(prev[orderNbr] ?? []), ""],
+    }));
+  };
+
+  const removeShipment = (orderNbr: string, idx: number) => {
+    setShipmentDrafts((prev) => {
+      const next = [...(prev[orderNbr] ?? [])];
+      next.splice(idx, 1);
+      return { ...prev, [orderNbr]: next };
+    });
+  };
+
+  const saveShipments = async () => {
+    if (!activeAppointment) return;
+    setShipmentSaving(true);
+    setShipmentError("");
+
+    const payload = {
+      shipments: (activeAppointment.orders ?? []).map((order) => ({
+        orderNbr: order.orderNbr,
+        shipmentNbrs: (shipmentDrafts[order.orderNbr] ?? [])
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean),
+      })),
+    };
+
+    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}/shipments`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setShipmentError(data?.message ?? "Unable to save shipments.");
+      setShipmentSaving(false);
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const updated: StaffPickup | null = data?.pickup ?? null;
+    if (updated) {
+      setAppointments((prev) => prev.map((apt) => (apt.id === updated.id ? updated : apt)));
+    }
+    setShipmentOriginals(shipmentDrafts);
+    setShipmentEditing(false);
+    setShipmentSaving(false);
+  };
+
   const hasNotifiableChange = (appointment: StaffPickup, payload: Record<string, any>, orderNbrs: string[]) => {
     const timeChanged =
       payload.startAt &&
@@ -516,6 +621,7 @@ export default function StaffPickupsPage() {
   const handleOpenEdit = (appointment: StaffPickup) => {
     setActiveAppointment(appointment);
     setIsCreating(false);
+    setShipmentEditing(appointment.status !== "Ready");
     const startDate = parseISO(appointment.startAt);
     const endDate = parseISO(appointment.endAt);
     setFormData({
@@ -541,6 +647,9 @@ export default function StaffPickupsPage() {
     setItemsLoading(false);
     setOrderLinesByOrder({});
     setSelectedItems([]);
+    setShipmentDrafts({});
+    setShipmentOriginals({});
+    setShipmentEditing(true);
     const start = toIsoLocal(selectedDate);
     const end = toIsoLocal(new Date(selectedDate.getTime() + 30 * 60_000));
     const startDate = parseISO(start);
@@ -675,28 +784,6 @@ export default function StaffPickupsPage() {
         })
         .filter((item) => item.qty > 0)
     );
-  };
-
-  const handleRemoveItem = (orderNbr: string, key: string) => {
-    updateSelection(orderNbr, (items) => items.filter((item) => (item.lineId ?? item.inventoryId) !== key));
-  };
-
-  const handleAddCustomItem = (orderNbr: string) => {
-    const draft = customItemDrafts[orderNbr];
-    if (!draft?.inventoryId || !draft.qty) return;
-    const qty = Math.max(1, Math.floor(Number(draft.qty)));
-    updateSelection(orderNbr, (items) => [
-      ...items,
-      {
-        inventoryId: draft.inventoryId.trim(),
-        description: draft.description?.trim() || undefined,
-        qty,
-      },
-    ]);
-    setCustomItemDrafts((prev) => ({
-      ...prev,
-      [orderNbr]: { inventoryId: "", qty: "", description: "" },
-    }));
   };
 
   const handleSaveItems = async () => {
@@ -1143,23 +1230,36 @@ export default function StaffPickupsPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Order Numbers (comma separated)</Label>
-                <Input
-                  value={formData.orderNbrs}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
-                  placeholder="C12345, C67890"
-                  disabled={isViewer}
-                />
-              </div>
+              {isCreating ? (
+                <div className="space-y-2">
+                  <Label>Order Numbers (comma separated)</Label>
+                  <Input
+                    value={formData.orderNbrs}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
+                    placeholder="C12345, C67890"
+                    disabled={isViewer}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-lg border border-border/60 bg-white p-4 space-y-4">
-              <div>
-                <div className="text-sm font-semibold text-foreground">Items for this appointment</div>
-                <p className="text-xs text-muted-foreground">
-                  Adjust items and quantities for each order. 0 qty removes a line.
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">Items for this appointment</div>
+                  <p className="text-xs text-muted-foreground">
+                    Adjust items and quantities for each order. 0 qty removes a line.
+                  </p>
+                </div>
+                {activeAppointment?.status === "Ready" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShipmentEditing((prev) => !prev)}
+                  >
+                    {shipmentEditing ? "Cancel edit" : "Edit"}
+                  </Button>
+                ) : null}
               </div>
 
               {isCreating ? (
@@ -1176,16 +1276,62 @@ export default function StaffPickupsPage() {
                     const orderNbr = order.orderNbr;
                     const lines = orderLinesByOrder[orderNbr] ?? [];
                     const selectedMap = selectionsByOrder.get(orderNbr);
-                    const customItems =
-                      selectedItems.find((selection) => selection.orderNbr === orderNbr)?.items.filter(
-                        (item) => !item.lineId
-                      ) ?? [];
+                    const shipments = shipmentDrafts[orderNbr] ?? [];
+                    const isLocked =
+                      isViewer ||
+                      (activeAppointment?.status === "Ready" && !shipmentEditing) ||
+                      activeAppointment?.status === "Cancelled" ||
+                      activeAppointment?.status === "Completed" ||
+                      activeAppointment?.status === "NoShow";
 
                     return (
                       <div key={orderNbr} className="rounded-md border border-border/60 p-3 space-y-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="text-sm font-semibold text-foreground">Order {orderNbr}</div>
-                          <div className="text-xs text-muted-foreground">{lines.length} lines</div>
+                          <div className="rounded-md border border-border/60 bg-muted/30 p-3 md:min-w-[220px]">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Shipments
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              {shipments.length ? (
+                                shipments.map((value, idx) => {
+                                  const isValid =
+                                    value.trim().length === 0 || SHIPMENT_FORMAT.test(value.trim());
+                                  return (
+                                    <div key={`${orderNbr}-${idx}`} className="flex items-center gap-2">
+                                      <Input
+                                        value={value}
+                                        onChange={(event) =>
+                                          updateShipmentValue(orderNbr, idx, event.target.value)
+                                        }
+                                        placeholder="SMT0123456"
+                                        className={cn(!isValid && "border-destructive")}
+                                        disabled={isLocked}
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => removeShipment(orderNbr, idx)}
+                                        disabled={isLocked}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="text-xs text-muted-foreground">No shipments yet.</div>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => addShipment(orderNbr)}
+                                disabled={isLocked}
+                              >
+                                + Add shipment
+                              </Button>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="space-y-2">
@@ -1208,7 +1354,7 @@ export default function StaffPickupsPage() {
                                     onCheckedChange={(value) =>
                                       handleToggleLine(orderNbr, line, Boolean(value))
                                     }
-                                    disabled={isViewer || !canSelect}
+                                    disabled={isLocked || !canSelect}
                                   />
                                   <div>
                                     <div className="text-sm font-medium text-foreground">
@@ -1231,7 +1377,7 @@ export default function StaffPickupsPage() {
                                       size="sm"
                                       className="h-7 px-2"
                                       onClick={() => handleAdjustQty(orderNbr, key, -1, maxQty)}
-                                      disabled={isViewer}
+                                      disabled={isLocked}
                                     >
                                       -
                                     </Button>
@@ -1244,14 +1390,14 @@ export default function StaffPickupsPage() {
                                         handleSetQty(orderNbr, key, Number(event.target.value), maxQty)
                                       }
                                       className="h-7 w-16 text-center"
-                                      disabled={isViewer}
+                                      disabled={isLocked}
                                     />
                                     <Button
                                       variant="outline"
                                       size="sm"
                                       className="h-7 px-2"
                                       onClick={() => handleAdjustQty(orderNbr, key, 1, maxQty)}
-                                      disabled={isViewer}
+                                      disabled={isLocked}
                                     >
                                       +
                                     </Button>
@@ -1262,122 +1408,51 @@ export default function StaffPickupsPage() {
                           })}
                         </div>
 
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Custom items
-                          </div>
-                          {customItems.length ? (
-                            <div className="space-y-2">
-                              {customItems.map((item) => {
-                                const key = item.lineId ?? item.inventoryId;
-                                return (
-                                  <div
-                                    key={key}
-                                    className="rounded-md border border-border/60 p-2 flex items-center justify-between gap-3"
-                                  >
-                                    <div>
-                                      <div className="text-sm font-medium text-foreground">
-                                        {item.inventoryId}
-                                      </div>
-                                      {item.description ? (
-                                        <div className="text-xs text-muted-foreground">{item.description}</div>
-                                      ) : null}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        value={item.qty}
-                                        onChange={(event) =>
-                                          handleSetQty(orderNbr, key, Number(event.target.value))
-                                        }
-                                        className="h-7 w-16 text-center"
-                                        disabled={isViewer}
-                                      />
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 px-2"
-                                        onClick={() => handleRemoveItem(orderNbr, key)}
-                                        disabled={isViewer}
-                                      >
-                                        Remove
-                                      </Button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : null}
-                          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_90px]">
-                            <Input
-                              value={customItemDrafts[orderNbr]?.inventoryId ?? ""}
-                              onChange={(event) =>
-                                setCustomItemDrafts((prev) => ({
-                                  ...prev,
-                                  [orderNbr]: {
-                                    inventoryId: event.target.value,
-                                    qty: prev[orderNbr]?.qty ?? "",
-                                    description: prev[orderNbr]?.description ?? "",
-                                  },
-                                }))
-                              }
-                              placeholder="Inventory ID"
-                              disabled={isViewer}
-                            />
-                            <Input
-                              type="number"
-                              min={1}
-                              value={customItemDrafts[orderNbr]?.qty ?? ""}
-                              onChange={(event) =>
-                                setCustomItemDrafts((prev) => ({
-                                  ...prev,
-                                  [orderNbr]: {
-                                    inventoryId: prev[orderNbr]?.inventoryId ?? "",
-                                    qty: event.target.value,
-                                    description: prev[orderNbr]?.description ?? "",
-                                  },
-                                }))
-                              }
-                              placeholder="Qty"
-                              disabled={isViewer}
-                            />
-                          </div>
-                          <Input
-                            value={customItemDrafts[orderNbr]?.description ?? ""}
-                            onChange={(event) =>
-                              setCustomItemDrafts((prev) => ({
-                                ...prev,
-                                [orderNbr]: {
-                                  inventoryId: prev[orderNbr]?.inventoryId ?? "",
-                                  qty: prev[orderNbr]?.qty ?? "",
-                                  description: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="Description (optional)"
-                            disabled={isViewer}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleAddCustomItem(orderNbr)}
-                            disabled={isViewer}
-                          >
-                            Add item
-                          </Button>
-                        </div>
                       </div>
                     );
                   })}
                 </div>
               )}
 
+              {shipmentError ? <p className="text-xs text-destructive">{shipmentError}</p> : null}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Shipment numbers must follow the format SMT#######.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={saveShipments}
+                  disabled={
+                    isViewer ||
+                    isCreating ||
+                    shipmentSaving ||
+                    (activeAppointment?.status === "Ready" && !shipmentEditing) ||
+                    activeAppointment?.status === "Cancelled" ||
+                    activeAppointment?.status === "Completed" ||
+                    activeAppointment?.status === "NoShow" ||
+                    !shipmentDirty
+                  }
+                >
+                  {shipmentSaving ? "Saving..." : "Save Shipments"}
+                </Button>
+              </div>
+
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
                   Items are based on the current order list. Save orders first if they changed.
                 </p>
-                <Button variant="outline" onClick={handleSaveItems} disabled={isViewer || isCreating}>
+                <Button
+                  variant="outline"
+                  onClick={handleSaveItems}
+                  disabled={
+                    isViewer ||
+                    isCreating ||
+                    (activeAppointment?.status === "Ready" && !shipmentEditing) ||
+                    activeAppointment?.status === "Cancelled" ||
+                    activeAppointment?.status === "Completed" ||
+                    activeAppointment?.status === "NoShow"
+                  }
+                >
                   Save Items
                 </Button>
               </div>

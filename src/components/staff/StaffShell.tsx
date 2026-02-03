@@ -45,7 +45,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/staff" className="font-semibold tracking-tight">
-              Staff
+              Dashboard
             </Link>
 
             <nav className="hidden md:flex items-center gap-1">

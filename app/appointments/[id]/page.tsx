@@ -26,8 +26,7 @@ type AppointmentOrder = { orderNbr: string };
 type AppointmentOrderItem = {
   inventoryId: string | null;
   lineDescription: string | null;
-  openQty: number | null;
-  orderQty: number | null;
+  qty: number | null;
 };
 type AppointmentOrderLines = {
   orderNbr: string;
@@ -312,9 +311,9 @@ function AppointmentContent() {
                                     </div>
                                   ) : null}
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Qty: <span className="font-semibold text-foreground">{formatQty(item.openQty ?? item.orderQty)}</span>
-                                </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Qty: <span className="font-semibold text-foreground">{formatQty(item.qty)}</span>
+                                  </div>
                               </div>
                             ))
                           ) : (
