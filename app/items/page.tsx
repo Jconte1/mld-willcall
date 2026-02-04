@@ -78,7 +78,7 @@ const formatSalespersonContact = (salesPerson?: {
 } | null) => {
   if (!salesPerson) return "your salesperson";
   const label = salesPerson.name || salesPerson.number || "your salesperson";
-  const contactPieces = [];
+  const contactPieces: string[] = [];
   const phone = formatPhone(salesPerson.phone);
   if (phone) contactPieces.push(phone);
   if (salesPerson.email) contactPieces.push(salesPerson.email);

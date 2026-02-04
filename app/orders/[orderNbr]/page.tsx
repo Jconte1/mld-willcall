@@ -146,7 +146,7 @@ function formatSalespersonContact(value?: {
 } | null) {
   if (!value) return "â€”";
   const label = value.name || value.number || "Salesperson";
-  const contactPieces = [];
+  const contactPieces: string[] = [];
   const phone = formatPhone(value.phone ?? null);
   if (phone !== "â€”") contactPieces.push(phone);
   if (value.email) contactPieces.push(value.email);
