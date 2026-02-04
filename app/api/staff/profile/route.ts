@@ -18,6 +18,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   const authHeader = getAuthHeader(session);
   if (!authHeader) {
+    console.info("[staff-profile][api] missing auth");
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
@@ -29,6 +30,7 @@ export async function GET() {
   });
 
   const data = await res.json().catch(() => ({}));
+  console.info("[staff-profile][api] GET", { status: res.status, ok: res.ok });
   return NextResponse.json(data, { status: res.status });
 }
 
@@ -36,6 +38,7 @@ export async function PUT(req: Request) {
   const session = await getServerSession(authOptions);
   const authHeader = getAuthHeader(session);
   if (!authHeader) {
+    console.info("[staff-profile][api] missing auth");
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
@@ -50,5 +53,6 @@ export async function PUT(req: Request) {
   });
 
   const data = await res.json().catch(() => ({}));
+  console.info("[staff-profile][api] PUT", { status: res.status, ok: res.ok });
   return NextResponse.json(data, { status: res.status });
 }

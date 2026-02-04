@@ -51,6 +51,11 @@ export default function SalespersonProfilePage() {
   });
 
   useEffect(() => {
+    console.info("[salesperson-profile] session", {
+      status,
+      role: session?.user?.role,
+      mustCompleteProfile: session?.user?.mustCompleteProfile,
+    });
     if (status === "unauthenticated") {
       router.replace("/staff/login");
       return;
@@ -65,6 +70,7 @@ export default function SalespersonProfilePage() {
     fetch("/api/staff/profile")
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
+        console.info("[salesperson-profile] load", { ok, data });
         if (!ok) return;
         const profile = data?.profile ?? data ?? {};
         form.reset({
@@ -81,6 +87,7 @@ export default function SalespersonProfilePage() {
   const onSubmit = async (values: FormValues) => {
     setSaving(true);
     try {
+      console.info("[salesperson-profile] submit");
       const res = await fetch("/api/staff/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -92,6 +99,7 @@ export default function SalespersonProfilePage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      console.info("[salesperson-profile] submit response", { ok: res.ok, status: res.status, data });
       if (!res.ok) {
         throw new Error(data?.message || "Unable to save profile");
       }
