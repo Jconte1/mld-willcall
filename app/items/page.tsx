@@ -92,6 +92,7 @@ const ItemSelectionPage: React.FC = () => {
   const [creditHoldOpen, setCreditHoldOpen] = useState(false);
   const orderReadyToken = formData.orderReadyToken;
   const usePublicFlow = Boolean(orderReadyToken);
+  const lockSelection = usePublicFlow;
 
   const orderNbrs = useMemo(
     () =>
@@ -358,6 +359,7 @@ const ItemSelectionPage: React.FC = () => {
   };
 
   const handleToggleItem = (orderNbr: string, lineId: string, checked: boolean) => {
+    if (lockSelection) return;
     setOrderGroups((prev) =>
       prev.map((group) => {
         if (group.orderNbr !== orderNbr) return group;
@@ -374,6 +376,7 @@ const ItemSelectionPage: React.FC = () => {
   };
 
   const handleAdjustQty = (orderNbr: string, lineId: string, delta: number) => {
+    if (lockSelection) return;
     setOrderGroups((prev) =>
       prev.map((group) => {
         if (group.orderNbr !== orderNbr) return group;
@@ -391,6 +394,7 @@ const ItemSelectionPage: React.FC = () => {
   };
 
   const handleSelectAllOrder = (orderNbr: string) => {
+    if (lockSelection) return;
     setOrderGroups((prev) =>
       prev.map((group) =>
         group.orderNbr === orderNbr
@@ -408,6 +412,7 @@ const ItemSelectionPage: React.FC = () => {
   };
 
   const handleSelectAll = () => {
+    if (lockSelection) return;
     setOrderGroups((prev) =>
       prev.map((group) => ({
         ...group,
@@ -531,7 +536,7 @@ const ItemSelectionPage: React.FC = () => {
                   size="sm"
                   onClick={handleSelectAll}
                   className="border-transparent bg-[#d9b45b] text-black hover:bg-[#caa44a]"
-                  disabled={orderGroups.every((group) =>
+                  disabled={lockSelection || orderGroups.every((group) =>
                     group.items.every((item) => !item.isAvailable)
                   )}
                 >
@@ -579,7 +584,7 @@ const ItemSelectionPage: React.FC = () => {
                               handleSelectAllOrder(group.orderNbr);
                             }}
                             className="border-transparent bg-[#d9b45b] text-black hover:bg-[#caa44a]"
-                            disabled={availableInOrder === 0}
+                            disabled={lockSelection || availableInOrder === 0}
                           >
                             Select all
                           </Button>
@@ -608,7 +613,7 @@ const ItemSelectionPage: React.FC = () => {
                                     key={item.lineId}
                                     className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 rounded-md border border-border/60 px-3 py-2 ${
                                       item.isAvailable ? "" : "opacity-50"
-                                    }`}
+                                    } ${lockSelection ? "opacity-60" : ""}`}
                                   >
                                     <label className="flex min-w-0 items-start gap-3">
                                       {item.isAvailable ? (
@@ -622,7 +627,7 @@ const ItemSelectionPage: React.FC = () => {
                                             )
                                           }
                                           className="mt-1"
-                                          disabled={!item.isAvailable}
+                                          disabled={!item.isAvailable || lockSelection}
                                         />
                                       ) : null}
                                       <div className="min-w-0">
@@ -650,7 +655,7 @@ const ItemSelectionPage: React.FC = () => {
                                             onClick={() =>
                                               handleAdjustQty(group.orderNbr, item.lineId, -1)
                                             }
-                                            disabled={!item.selected || item.qty <= 1}
+                                            disabled={lockSelection || !item.selected || item.qty <= 1}
                                           >
                                             <Minus className="h-3 w-3" />
                                           </Button>
@@ -664,7 +669,7 @@ const ItemSelectionPage: React.FC = () => {
                                             onClick={() =>
                                               handleAdjustQty(group.orderNbr, item.lineId, 1)
                                             }
-                                            disabled={item.qty >= item.maxQty}
+                                            disabled={lockSelection || item.qty >= item.maxQty}
                                           >
                                             <Plus className="h-3 w-3" />
                                           </Button>
