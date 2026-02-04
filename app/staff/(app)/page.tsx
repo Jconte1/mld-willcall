@@ -52,7 +52,7 @@ const STATUS_STYLES: Record<AppointmentStatus, string> = {
 export default function StaffHomePage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const isViewer = session?.user?.role === "VIEWER";
+  const isViewer = session?.user?.role === "VIEWER" || session?.user?.role === "SALESPERSON";
   const [pickups, setPickups] = useState<StaffPickup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -70,7 +70,7 @@ export default function StaffHomePage() {
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, AppointmentLine[]>>({});
 
   useEffect(() => {
-    if (session?.user?.role === "VIEWER") {
+    if (session?.user?.role === "VIEWER" || session?.user?.role === "SALESPERSON") {
       router.replace("/staff/pickups");
     }
   }, [router, session?.user?.role]);
@@ -103,7 +103,7 @@ export default function StaffHomePage() {
       setShipmentOriginals(shipmentMap);
       setLoading(false);
     };
-    if (session?.user?.role !== "VIEWER") {
+    if (session?.user?.role !== "VIEWER" && session?.user?.role !== "SALESPERSON") {
       fetchBoard();
     }
   }, [session?.user?.role]);

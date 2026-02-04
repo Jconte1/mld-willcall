@@ -11,6 +11,7 @@ type StaffUser = {
   role?: string;
   locationAccess?: string[];
   mustChangePassword?: boolean;
+  mustCompleteProfile?: boolean;
   isActive?: boolean;
   token?: string;
 };
@@ -112,6 +113,7 @@ export const authOptions: NextAuthOptions = {
         (token as any).role = (user as any).role;
         (token as any).locationAccess = (user as any).locationAccess ?? [];
         (token as any).mustChangePassword = (user as any).mustChangePassword ?? false;
+        (token as any).mustCompleteProfile = (user as any).mustCompleteProfile ?? false;
         (token as any).isActive = (user as any).isActive ?? true;
 
         // Customer fields
@@ -131,6 +133,8 @@ export const authOptions: NextAuthOptions = {
         (token as any).role = (session.user as any).role ?? (token as any).role;
         (token as any).locationAccess = (session.user as any).locationAccess ?? (token as any).locationAccess;
         (token as any).mustChangePassword = (session.user as any).mustChangePassword ?? (token as any).mustChangePassword;
+        (token as any).mustCompleteProfile =
+          (session.user as any).mustCompleteProfile ?? (token as any).mustCompleteProfile;
         (token as any).isActive = (session.user as any).isActive ?? (token as any).isActive;
 
         (token as any).baid = (session.user as any).baid ?? (token as any).baid;
@@ -155,6 +159,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).role = (token as any).role;
         (session.user as any).locationAccess = ((token as any).locationAccess as string[]) ?? [];
         (session.user as any).mustChangePassword = Boolean((token as any).mustChangePassword);
+        (session.user as any).mustCompleteProfile = Boolean((token as any).mustCompleteProfile);
         (session.user as any).isActive = (token as any).isActive !== false;
 
         // Customer fields

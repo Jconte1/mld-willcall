@@ -56,6 +56,12 @@ type OrderDetail = {
     orderType: string;
     fulfillmentStatus: string;
     paymentStatus: string | null;
+    salesPerson?: {
+      number: string;
+      name: string | null;
+      phone: string | null;
+      email: string | null;
+    } | null;
     lineSummary: {
       totalLines: number;
       openLines: number;
@@ -130,6 +136,22 @@ function formatPhone(value: string | null) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return value;
+}
+
+function formatSalespersonContact(value?: {
+  number: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+} | null) {
+  if (!value) return "â€”";
+  const label = value.name || value.number || "Salesperson";
+  const contactPieces = [];
+  const phone = formatPhone(value.phone ?? null);
+  if (phone !== "â€”") contactPieces.push(phone);
+  if (value.email) contactPieces.push(value.email);
+  if (contactPieces.length === 0) return label;
+  return `${label} â€¢ ${contactPieces.join(" or ")}`;
 }
 
 function formatQty(value: number | null) {
@@ -438,6 +460,14 @@ export default function OrderDetailPage() {
                       <div>
                         Status: <span className="font-medium">{formatText(detail.payment?.status ?? null)}</span>
                       </div>
+                      {detail.summary.salesPerson ? (
+                        <div>
+                          Salesperson:{" "}
+                          <span className="font-medium">
+                            {formatSalespersonContact(detail.summary.salesPerson)}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>

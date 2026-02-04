@@ -1,6 +1,6 @@
 import NextAuth, { DefaultSession } from "next-auth";
 
-export type StaffRole = "ADMIN" | "STAFF" | "VIEWER";
+export type StaffRole = "ADMIN" | "STAFF" | "VIEWER" | "SALESPERSON";
 export type CustomerAccountRole = "ADMIN" | "PM";
 
 declare module "next-auth" {
@@ -11,6 +11,7 @@ declare module "next-auth" {
       role: StaffRole;
       locationAccess: string[]; // e.g. ["slc-hq", "slc-outlet", "boise-willcall"]
       mustChangePassword: boolean;
+      mustCompleteProfile?: boolean;
       isActive: boolean;
       staffToken?: string | null;
       baid?: string | null;
@@ -26,6 +27,7 @@ declare module "next-auth" {
     role: StaffRole;
     locationAccess: string[];
     mustChangePassword: boolean;
+    mustCompleteProfile?: boolean;
     isActive: boolean;
     token?: string | null;
     type?: "staff" | "customer";
@@ -43,6 +45,7 @@ declare module "next-auth/jwt" {
     role?: StaffRole;
     locationAccess?: string[];
     mustChangePassword?: boolean;
+    mustCompleteProfile?: boolean;
     isActive?: boolean;
     staffToken?: string | null;
     type?: "staff" | "customer";

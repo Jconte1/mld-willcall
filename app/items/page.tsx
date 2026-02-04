@@ -50,15 +50,51 @@ type OrderGroup = {
     status: string | null;
   };
   pickedUpValue: number;
+  salesPerson?: {
+    number: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
 };
 
 const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
 const MIN_DEPOSIT_RATIO = 0.47;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const formatPhone = (value?: string | null) => {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return value;
+};
+
+const formatSalespersonContact = (salesPerson?: {
+  number: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+} | null) => {
+  if (!salesPerson) return "your salesperson";
+  const label = salesPerson.name || salesPerson.number || "your salesperson";
+  const contactPieces = [];
+  const phone = formatPhone(salesPerson.phone);
+  if (phone) contactPieces.push(phone);
+  if (salesPerson.email) contactPieces.push(salesPerson.email);
+  if (contactPieces.length === 0) return label;
+  return `${label} at ${contactPieces.join(" or ")}`;
+};
 
 type PublicOrderReadyResponse = {
   orderReady: {
     orderNbr: string;
+    salesPerson?: {
+      number: string;
+      name: string | null;
+      phone: string | null;
+      email: string | null;
+    } | null;
   };
   payment?: {
     orderTotal: number | null;
@@ -170,6 +206,9 @@ const ItemSelectionPage: React.FC = () => {
         const unpaidBalance = Number(payment?.unpaidBalance ?? 0) || 0;
         const terms = typeof payment?.terms === "string" ? payment.terms : null;
         const status = typeof payment?.status === "string" ? payment.status : null;
+        const salesPerson = usePublicFlow
+          ? publicPayload?.orderReady?.salesPerson ?? null
+          : data?.summary?.salesPerson ?? null;
         const pickedUpValueRaw = lines.reduce((sum: number, line: any) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
           if (orderQty <= 0) return sum;
@@ -231,6 +270,7 @@ const ItemSelectionPage: React.FC = () => {
             status,
           },
           pickedUpValue,
+          salesPerson,
         };
       })
     )
@@ -340,6 +380,7 @@ const ItemSelectionPage: React.FC = () => {
           remainingValue,
           selectedValue,
           amountOwed,
+          salesPerson: group.salesPerson ?? null,
         };
       })
       .filter(Boolean) as Array<{
@@ -347,6 +388,12 @@ const ItemSelectionPage: React.FC = () => {
       remainingValue: number;
       selectedValue: number;
       amountOwed: number;
+      salesPerson?: {
+        number: string;
+        name: string | null;
+        phone: string | null;
+        email: string | null;
+      } | null;
     }>;
   }, [orderGroups]);
 
@@ -438,10 +485,11 @@ const ItemSelectionPage: React.FC = () => {
       return;
     }
     if (paymentBlocks.length > 0) {
+      const salesPersonLabel = formatSalespersonContact(paymentBlocks[0]?.salesPerson ?? null);
       toast({
         title: "Payment required before pickup",
         description:
-          "Please call (801)-466-0990 Ext. 3 or your salesperson to complete payment.",
+          `Please call (801)-466-0990 Ext. 3 or ${salesPersonLabel} to complete payment.`,
       });
       return;
     }
@@ -498,7 +546,8 @@ const ItemSelectionPage: React.FC = () => {
                     Prepay balance required.
                   </p>
                   <p className="mt-1 text-xs text-[#b13d2b]">
-                    Additional payment is due. Please call (801)-466-0990 Ext. 3 or your salesperson.
+                    Additional payment is due. Please call (801)-466-0990 Ext. 3 or{" "}
+                    {formatSalespersonContact(paymentBlocks[0]?.salesPerson ?? null)}.
                   </p>
                   <div className="mt-3 space-y-2 text-xs">
                     {paymentBlocks.map((block) => (

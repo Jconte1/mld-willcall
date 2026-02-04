@@ -31,6 +31,12 @@ type OrderReadyResponse = {
     contactPhone: string | null;
     locationId: string | null;
     smsOptIn: boolean;
+    salesPerson?: {
+      number: string;
+      name: string | null;
+      phone: string | null;
+      email: string | null;
+    } | null;
   };
   appointment?: {
     id: string;
@@ -52,6 +58,15 @@ type OrderReadyResponse = {
     openQty: number | null;
     orderQty: number | null;
   }[];
+};
+
+const formatPhone = (value?: string | null) => {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return value;
 };
 
 function ReadyContent() {
@@ -297,6 +312,22 @@ function ReadyContent() {
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4 text-muted-foreground" />
                       <span>{data.orderReady.contactPhone}</span>
+                    </div>
+                  ) : null}
+                  {data.orderReady.salesPerson ? (
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span>
+                        Salesperson{" "}
+                        {data.orderReady.salesPerson.name || data.orderReady.salesPerson.number || ""}
+                        {data.orderReady.salesPerson.phone || data.orderReady.salesPerson.email
+                          ? ` • ${
+                              [formatPhone(data.orderReady.salesPerson.phone), data.orderReady.salesPerson.email]
+                                .filter(Boolean)
+                                .join(" or ")
+                            }`
+                          : ""}
+                      </span>
                     </div>
                   ) : null}
                 </div>

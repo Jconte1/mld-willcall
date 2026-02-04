@@ -24,6 +24,10 @@ type StaffUserRow = {
   role: StaffRole;
   isActive: boolean;
   locationAccess: string[];
+  salespersonNumber?: string | null;
+  salespersonName?: string | null;
+  salespersonPhone?: string | null;
+  salespersonEmail?: string | null;
 };
 
 const LOCATION_IDS = ["slc-hq", "slc-outlet", "boise-willcall"] as const;
@@ -36,11 +40,26 @@ const createSchema = z.object({
     .string()
     .email("Enter a valid email")
     .refine((v) => v.toLowerCase().endsWith("@mld.com"), "Email must be @mld.com"),
-  role: z.enum(["STAFF", "ADMIN", "VIEWER"]),
+  role: z.enum(["STAFF", "ADMIN", "VIEWER", "SALESPERSON"]),
   locationAccess: z.array(z.enum(LOCATION_IDS)).min(1, "Select at least one location"),
 });
 
+const editSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z
+    .string()
+    .email("Enter a valid email")
+    .refine((v) => v.toLowerCase().endsWith("@mld.com"), "Email must be @mld.com"),
+  role: z.enum(["STAFF", "ADMIN", "VIEWER", "SALESPERSON"]),
+  locationAccess: z.array(z.enum(LOCATION_IDS)).min(1, "Select at least one location"),
+  salespersonNumber: z.string().optional().or(z.literal("")),
+  salespersonName: z.string().optional().or(z.literal("")),
+  salespersonPhone: z.string().optional().or(z.literal("")),
+  salespersonEmail: z.string().optional().or(z.literal("")),
+});
+
 type CreateValues = z.infer<typeof createSchema>;
+type EditValues = z.infer<typeof editSchema>;
 
 export default function StaffUsersPage() {
   const { data: session } = useSession();
@@ -66,13 +85,17 @@ export default function StaffUsersPage() {
     },
   });
 
-  const editForm = useForm<CreateValues>({
-    resolver: zodResolver(createSchema),
+  const editForm = useForm<EditValues>({
+    resolver: zodResolver(editSchema),
     defaultValues: {
       name: "",
       email: "",
       role: "STAFF",
       locationAccess: ["slc-hq"],
+      salespersonNumber: "",
+      salespersonName: "",
+      salespersonPhone: "",
+      salespersonEmail: "",
     },
   });
 
@@ -107,7 +130,14 @@ export default function StaffUsersPage() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((u) =>
-      [u.email, u.name, u.role, u.locationAccess.join(",")].some((v) => v.toLowerCase().includes(needle))
+      [
+        u.email,
+        u.name,
+        u.role,
+        u.locationAccess.join(","),
+        u.salespersonNumber ?? "",
+        u.salespersonName ?? "",
+      ].some((v) => v.toLowerCase().includes(needle))
     );
   }, [q, rows]);
 
@@ -148,7 +178,12 @@ export default function StaffUsersPage() {
       } else {
         toast({ title: "User created", description: "They can now sign in with the temp password." });
       }
-      form.reset({ name: "", email: "", role: "STAFF", locationAccess: ["slc-hq"] });
+      form.reset({
+        name: "",
+        email: "",
+        role: "STAFF",
+        locationAccess: ["slc-hq"],
+      });
       setCreateOpen(false);
     } catch (err: any) {
       toast({ title: "Could not create user", description: err?.message ?? "Unknown error", variant: "destructive" });
@@ -181,11 +216,15 @@ export default function StaffUsersPage() {
       email: user.email ?? "",
       role: user.role ?? "STAFF",
       locationAccess: toLocationAccess(user.locationAccess),
-    } as CreateValues);
+      salespersonNumber: user.salespersonNumber ?? "",
+      salespersonName: user.salespersonName ?? "",
+      salespersonPhone: user.salespersonPhone ?? "",
+      salespersonEmail: user.salespersonEmail ?? "",
+    } as EditValues);
     setEditOpen(true);
   };
 
-  const handleEdit = async (values: CreateValues) => {
+  const handleEdit = async (values: EditValues) => {
     if (!editingId) return;
     setEditing(true);
     try {
@@ -350,6 +389,7 @@ export default function StaffUsersPage() {
                       >
                         <option value="STAFF">Staff</option>
                         <option value="VIEWER">Viewer</option>
+                        <option value="SALESPERSON">Salesperson</option>
                         <option value="ADMIN">Admin</option>
                       </select>
                     </FormControl>
@@ -456,6 +496,7 @@ export default function StaffUsersPage() {
                       >
                         <option value="STAFF">Staff</option>
                         <option value="VIEWER">Viewer</option>
+                        <option value="SALESPERSON">Salesperson</option>
                         <option value="ADMIN">Admin</option>
                       </select>
                     </FormControl>
@@ -496,6 +537,66 @@ export default function StaffUsersPage() {
                   </FormItem>
                 )}
               />
+
+              {editForm.watch("role") === "SALESPERSON" ? (
+                <>
+                  <FormField
+                    control={editForm.control}
+                    name="salespersonNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Salesperson number</FormLabel>
+                        <FormControl>
+                          <Input {...field} inputMode="numeric" placeholder="1250" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={editForm.control}
+                    name="salespersonName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Salesperson name</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="Jane Doe" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={editForm.control}
+                    name="salespersonPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone (optional)</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="(801) 555-5555" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={editForm.control}
+                    name="salespersonEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email (optional)</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="name@mld.com" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              ) : null}
 
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>

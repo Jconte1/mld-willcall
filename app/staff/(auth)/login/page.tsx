@@ -41,7 +41,11 @@ function StaffLoginContent() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      const target = session.user.mustChangePassword ? "/staff/change-password" : nextUrl;
+      const target = session.user.mustChangePassword
+        ? "/staff/change-password"
+        : session.user.mustCompleteProfile
+          ? "/staff/salesperson-profile"
+          : nextUrl;
       router.replace(target);
     }
   }, [status, session, nextUrl, router]);
@@ -60,7 +64,7 @@ function StaffLoginContent() {
         return;
       }
 
-      router.replace(nextUrl);
+      // Redirect is handled by session effect to respect profile gating.
     } finally {
       setIsSubmitting(false);
     }

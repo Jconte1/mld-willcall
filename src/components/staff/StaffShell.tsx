@@ -33,6 +33,13 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
     if (status === "authenticated") {
       if (session.user.mustChangePassword && !pathname.startsWith("/staff/change-password")) {
         router.replace("/staff/change-password");
+        return;
+      }
+      if (
+        session.user.mustCompleteProfile &&
+        !pathname.startsWith("/staff/salesperson-profile")
+      ) {
+        router.replace("/staff/salesperson-profile");
       }
     }
   }, [status, session, pathname, router]);
@@ -76,7 +83,13 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Staff mode</span>
                   <span className="text-sm font-medium">{session.user.email}</span>
                   <span className="text-xs text-muted-foreground">
-                    {session.user.role === "ADMIN" ? "Admin" : session.user.role === "VIEWER" ? "Viewer" : "Staff"}
+                    {session.user.role === "ADMIN"
+                      ? "Admin"
+                      : session.user.role === "VIEWER"
+                        ? "Viewer"
+                        : session.user.role === "SALESPERSON"
+                          ? "Salesperson"
+                          : "Staff"}
                   </span>
                 </div>
                 <Button

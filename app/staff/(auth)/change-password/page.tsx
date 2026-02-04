@@ -52,9 +52,10 @@ export default function StaffChangePasswordPage() {
       return;
     }
     if (status === "authenticated" && session?.user?.mustChangePassword === false) {
-      router.replace("/staff");
+      const target = session?.user?.mustCompleteProfile ? "/staff/salesperson-profile" : "/staff";
+      router.replace(target);
     }
-  }, [router, session?.user?.mustChangePassword, status]);
+  }, [router, session?.user?.mustChangePassword, session?.user?.mustCompleteProfile, status]);
 
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
@@ -100,7 +101,8 @@ export default function StaffChangePasswordPage() {
       }
 
       toast({ title: "Password updated", description: "You're all set." });
-      router.replace("/staff");
+      const target = session?.user?.mustCompleteProfile ? "/staff/salesperson-profile" : "/staff";
+      router.replace(target);
       router.refresh();
     } catch (err: any) {
       console.error("[staff-change-password] error", err);
