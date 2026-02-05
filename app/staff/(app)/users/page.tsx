@@ -33,6 +33,7 @@ type StaffUserRow = {
 const LOCATION_IDS = ["slc-hq", "slc-outlet", "boise-willcall"] as const;
 type LocationId = (typeof LOCATION_IDS)[number];
 const LOCATION_SET = new Set<LocationId>(LOCATION_IDS);
+const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 
 const createSchema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -325,10 +326,10 @@ export default function StaffUsersPage() {
                           Edit
                         </Button>
                         <Button
-                          variant="destructive"
                           size="sm"
                           onClick={() => handleDelete(u.id, u.email)}
                           disabled={deletingId === u.id}
+                          className={DESTRUCTIVE_BUTTON}
                         >
                           {deletingId === u.id ? "Deleting..." : "Delete"}
                         </Button>
@@ -432,7 +433,7 @@ export default function StaffUsersPage() {
               />
 
               <DialogFooter className="gap-2">
-                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                <Button type="button" onClick={() => setCreateOpen(false)} className={DESTRUCTIVE_BUTTON}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={creating}>
@@ -599,7 +600,7 @@ export default function StaffUsersPage() {
               ) : null}
 
               <DialogFooter className="gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                <Button type="button" onClick={() => setEditOpen(false)} className={DESTRUCTIVE_BUTTON}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={editing}>

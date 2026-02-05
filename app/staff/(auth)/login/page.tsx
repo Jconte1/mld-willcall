@@ -31,6 +31,10 @@ function StaffLoginContent() {
   const { toast } = useToast();
   const { status, data: session } = useSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const showDashboardLink =
+    status === "authenticated" &&
+    !session?.user?.mustChangePassword &&
+    !session?.user?.mustCompleteProfile;
 
   const nextUrl = useMemo(() => params.get("next") || "/staff", [params]);
 
@@ -112,6 +116,21 @@ function StaffLoginContent() {
                   <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? "Signing in..." : "Sign in"}
                   </Button>
+                  {showDashboardLink ? (
+                    <Button
+                      type="button"
+                      variant="hero"
+                      className="w-full bg-black text-white hover:bg-black/90"
+                      onClick={() => {
+                        router.push("/staff");
+                        setTimeout(() => {
+                          window.location.assign("/staff");
+                        }, 150);
+                      }}
+                    >
+                      Go to dashboard
+                    </Button>
+                  ) : null}
                 </form>
               </Form>
             </CardContent>

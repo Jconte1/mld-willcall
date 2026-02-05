@@ -223,6 +223,11 @@ function AppointmentContent() {
               <CardTitle>Pickup Appointment</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-muted-foreground">
+              {isCompleted ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+                  Thank you! Your Appointment is complete!
+                </div>
+              ) : null}
               <div className="rounded-lg border border-border/60 bg-secondary/30 border-dashed p-4 space-y-3">
                 <div className="rounded-lg border border-border/60 bg-background/70 p-4">
                   <div className="flex flex-wrap gap-4 items-start text-sm">
@@ -328,7 +333,7 @@ function AppointmentContent() {
                 )}
               </div>
 
-              {!isCancelled && !isCompleted ? (
+              {!isCompleted ? (
                 <div className="flex flex-wrap gap-3 pt-2">
                   <Button
                     variant="hero"
@@ -336,25 +341,20 @@ function AppointmentContent() {
                   >
                     {rescheduleOpen ? "Close Reschedule" : "Reschedule"}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
-                    onClick={handleCancel}
-                  >
-                    Cancel Appointment
-                  </Button>
+                  {!isCancelled ? (
+                    <Button
+                      className="bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform"
+                      onClick={handleCancel}
+                    >
+                      Cancel Appointment
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
 
               {isCancelled ? (
                 <div className="text-sm font-semibold text-destructive">
-                  This appointment is cancelled. Please create a new appointment to reschedule.
-                </div>
-              ) : null}
-
-              {isCompleted ? (
-                <div className="text-sm font-medium text-muted-foreground">
-                  This appointment is completed.
+                  This appointment is cancelled. Please reschedule below.
                 </div>
               ) : null}
 

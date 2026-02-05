@@ -106,6 +106,8 @@ type OrderDetail = {
 };
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const DESTRUCTIVE_BUTTON =
+  "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -115,9 +117,9 @@ function formatDate(value: string | null) {
 }
 
 function formatText(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "Not set";
   const trimmed = value.trim();
-  if (!trimmed) return "—";
+  if (!trimmed) return "Not set";
   if (/[A-Z][A-Z]/.test(trimmed) && !/[a-z]/.test(trimmed)) {
     return trimmed
       .toLowerCase()
@@ -127,29 +129,29 @@ function formatText(value: string | null) {
 }
 
 function formatEmail(value: string | null) {
-  if (!value) return "—";
-  return value.trim().toLowerCase();
+  if (!value) return "Not set";
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || "Not set";
 }
 
 function formatPhone(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "Not set";
   const digits = value.replace(/\D/g, "");
   if (digits.length === 10) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
-  return value;
+  return value.trim() || "Not set";
 }
 
 function formatQty(value: number | null) {
-  if (value == null) return "—";
+  if (value == null) return "Not set";
   return value.toLocaleString();
 }
 
 function formatMoney(value: number | null) {
-  if (value == null) return "—";
+  if (value == null) return "Not set";
   return money.format(value);
 }
-
 export default function OrderDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -267,7 +269,7 @@ export default function OrderDetailPage() {
     const date = start.toLocaleDateString();
     const time = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const endTime = end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    return `Scheduled for ${date} • ${time}–${endTime}`;
+    return `Scheduled for ${date} � ${time}�${endTime}`;
   };
 
   const handleCancel = async () => {
@@ -514,15 +516,14 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
-                        variant="outline"
+                        variant="hero"
                         onClick={handleReschedule}
                         disabled={actionLoading}
                       >
                         Reschedule
                       </Button>
                       <Button
-                        variant="ghost"
-                        className="text-[#d24f39] font-semibold hover:text-[#d24f39] hover:bg-transparent"
+                        className={DESTRUCTIVE_BUTTON}
                         onClick={openCancelDialog}
                         disabled={actionLoading}
                       >
@@ -708,7 +709,7 @@ export default function OrderDetailPage() {
               Keep Appointment
             </Button>
             <Button
-              variant="hero"
+              className={DESTRUCTIVE_BUTTON}
               onClick={handleConfirmCancelOrders}
               disabled={cancelSubmitting || cancelSelectedOrders.length === 0}
             >
@@ -720,3 +721,4 @@ export default function OrderDetailPage() {
     </div>
   );
 }
+

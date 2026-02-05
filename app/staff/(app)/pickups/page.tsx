@@ -93,6 +93,7 @@ const SLOT_MINUTES = 15;
 const SLOT_HEIGHT_WEEK = 64;
 const SLOT_HEIGHT_DAY = 72;
 const SHIPMENT_FORMAT = /^SMT\d{7}$/;
+const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
   Scheduled: "bg-primary/10 text-primary",
@@ -1254,9 +1255,9 @@ export default function StaffPickupsPage() {
                 </div>
                 {activeAppointment?.status === "Ready" ? (
                   <Button
-                    variant="outline"
                     size="sm"
                     onClick={() => setShipmentEditing((prev) => !prev)}
+                    className={shipmentEditing ? DESTRUCTIVE_BUTTON : undefined}
                   >
                     {shipmentEditing ? "Cancel edit" : "Edit"}
                   </Button>
@@ -1310,10 +1311,10 @@ export default function StaffPickupsPage() {
                                         disabled={isLocked}
                                       />
                                       <Button
-                                        variant="outline"
                                         size="sm"
                                         onClick={() => removeShipment(orderNbr, idx)}
                                         disabled={isLocked}
+                                        className={DESTRUCTIVE_BUTTON}
                                       >
                                         Remove
                                       </Button>
@@ -1461,7 +1462,7 @@ export default function StaffPickupsPage() {
           </div>
 
           <DialogFooter className="mt-4">
-            <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+            <Button onClick={() => setDialogOpen(false)} className={DESTRUCTIVE_BUTTON}>
               Cancel
             </Button>
             <Button variant="hero" onClick={handleSaveAppointment} disabled={isViewer}>
@@ -1505,12 +1506,12 @@ export default function StaffPickupsPage() {
 
           <DialogFooter className="mt-4">
             <Button
-              variant="ghost"
               onClick={() => {
                 setNotifyDialogOpen(false);
                 setPendingUpdate(null);
                 setCancelReason("");
               }}
+              className={DESTRUCTIVE_BUTTON}
             >
               Cancel
             </Button>
@@ -1562,11 +1563,11 @@ export default function StaffPickupsPage() {
 
           <DialogFooter className="mt-4">
             <Button
-              variant="ghost"
               onClick={() => {
                 setItemsNotifyOpen(false);
                 setPendingItemsSave(null);
               }}
+              className={DESTRUCTIVE_BUTTON}
             >
               Cancel
             </Button>

@@ -94,6 +94,7 @@ export default function CustomerAuthCard() {
   const [resendEmail, setResendEmail] = React.useState("");
   const [resendPhone, setResendPhone] = React.useState("");
   const [resendSubmitting, setResendSubmitting] = React.useState(false);
+  const [showInviteModal, setShowInviteModal] = React.useState(false);
 
   const [verifyState, setVerifyState] = React.useState<VerifyState>({ status: "idle" });
   const [lockedUntil, setLockedUntil] = React.useState<number>(0);
@@ -741,27 +742,23 @@ export default function CustomerAuthCard() {
                     name="inviteCode"
                     render={({ field }) => (
                       <FormItem>
-                        <div className="flex items-end justify-between gap-3">
-                          <div className="flex-1">
-                            <FormLabel>Invite Code</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Enter your invite code"
-                                autoComplete="off"
-                                maxLength={12}
-                                {...field}
-                              />
-                            </FormControl>
-                          </div>
-                          <Button
+                        <FormLabel>Invite Code</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter your invite code"
+                            autoComplete="off"
+                            maxLength={12}
+                            {...field}
+                          />
+                        </FormControl>
+                        <div className="mt-2">
+                          <button
                             type="button"
-                            variant="outline"
-                            className="shrink-0"
-                            onClick={onRequestInvite}
-                            disabled={requestingInvite || !baidLooksValid || !zipLooksValid}
+                            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                            onClick={() => setShowInviteModal(true)}
                           >
-                            {requestingInvite ? "Sending..." : "Get a new code"}
-                          </Button>
+                            Get a new code
+                          </button>
                         </div>
                         <FormMessage />
                       </FormItem>
@@ -784,6 +781,66 @@ export default function CustomerAuthCard() {
                   ) : null}
                 </form>
               </Form>
+
+              {showInviteModal ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                  <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+                    <div className="text-sm font-semibold text-foreground">Request a new invite code</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Enter your BAID and billing ZIP to request a new code.
+                    </p>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground">BAID</label>
+                        <Input
+                          value={registerForm.getValues("baid")}
+                          onChange={(event) => {
+                            registerForm.setValue("baid", event.target.value);
+                            if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
+                          }}
+                          placeholder="BA1234567"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Billing ZIP</label>
+                        <Input
+                          value={registerForm.getValues("zip")}
+                          onChange={(event) => {
+                            const next = normalizeZip(event.target.value);
+                            registerForm.setValue("zip", next);
+                            if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
+                          }}
+                          placeholder="84043"
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          maxLength={5}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowInviteModal(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="hero"
+                        onClick={async () => {
+                          await onRequestInvite();
+                          setShowInviteModal(false);
+                        }}
+                        disabled={requestingInvite || !baidLooksValid || !zipLooksValid}
+                      >
+                        {requestingInvite ? "Sending..." : "Get new code"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -102,6 +102,8 @@ type RequestRow = {
 };
 
 const ORDER_PREVIEW_LIMIT = 5;
+const DESTRUCTIVE_BUTTON =
+  "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 
 const Index: React.FC = () => {
   const router = useRouter();
@@ -1084,9 +1086,8 @@ const Index: React.FC = () => {
                                             Reschedule
                                           </Button>
                                           <Button
-                                            variant="ghost"
                                             size="sm"
-                                            className="border border-[#d24f39] text-[#d24f39] font-semibold hover:bg-[#d24f39]/10 hover:text-[#d24f39]"
+                                            className={DESTRUCTIVE_BUTTON}
                                             onClick={() => openCancelDialog(order.appointment!, order.orderNbr)}
                                           >
                                             Cancel
@@ -1245,8 +1246,8 @@ const Index: React.FC = () => {
                                 ) : null}
                                 {isAdmin && member.userId !== user?.id ? (
                                   <Button
-                                    variant="ghost"
                                     size="sm"
+                                    className={DESTRUCTIVE_BUTTON}
                                     onClick={() => handleRemoveMember(member.userId)}
                                     disabled={memberActionId === member.userId}
                                   >
@@ -1318,8 +1319,8 @@ const Index: React.FC = () => {
                                 ) : null}
                                 {isAdmin && invite.status === "Pending" ? (
                                   <Button
-                                    variant="ghost"
                                     size="sm"
+                                    className={DESTRUCTIVE_BUTTON}
                                     onClick={() => handleRevokeInvite(invite.id)}
                                     disabled={inviteActionId === invite.id}
                                   >
@@ -1441,7 +1442,7 @@ const Index: React.FC = () => {
 
           <DialogFooter className="mt-4">
             <Button
-              variant="ghost"
+              className={DESTRUCTIVE_BUTTON}
               onClick={() => setInviteDialogOpen(false)}
               disabled={inviteSubmitting}
             >

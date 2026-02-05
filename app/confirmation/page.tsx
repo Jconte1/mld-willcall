@@ -356,13 +356,12 @@ Reference: ${formData.pickupReference}`;
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Details
               </Button>
-              <Button variant="secondary">
+              <Button variant="hero">
                 <Edit className="h-4 w-4 mr-2" />
                 Reschedule
               </Button>
               <Button
-                variant="ghost"
-                className="text-destructive hover:text-destructive"
+                className="bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform"
                 onClick={handleCancelFromConfirmation}
                 disabled={isCancelling}
               >
