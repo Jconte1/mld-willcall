@@ -35,6 +35,8 @@ type OrderLine = {
   inventoryId: string | null;
   lineType: string | null;
   openQty: number | null;
+  allocatedQty: number | null;
+  isAllocated: boolean | null;
   unitPrice: number | null;
   usrETA: string | null;
   here: string | null;
@@ -138,22 +140,6 @@ function formatPhone(value: string | null) {
   return value;
 }
 
-function formatSalespersonContact(value?: {
-  number: string;
-  name: string | null;
-  phone: string | null;
-  email: string | null;
-} | null) {
-  if (!value) return "â€”";
-  const label = value.name || value.number || "Salesperson";
-  const contactPieces: string[] = [];
-  const phone = formatPhone(value.phone ?? null);
-  if (phone !== "â€”") contactPieces.push(phone);
-  if (value.email) contactPieces.push(value.email);
-  if (contactPieces.length === 0) return label;
-  return `${label} â€¢ ${contactPieces.join(" or ")}`;
-}
-
 function formatQty(value: number | null) {
   if (value == null) return "—";
   return value.toLocaleString();
@@ -214,13 +200,65 @@ export default function OrderDetailPage() {
   }, [orderNbr, session, status]);
 
   const itemsHere = useMemo(
-    () => detail?.lines.filter((line) => (line.openQty ?? 0) <= 0) ?? [],
+    () => {
+      if (!detail?.lines?.length) return [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return detail.lines.filter((line) => {
+        if (line.isAllocated) return true;
+        const here = (line.here ?? "").toLowerCase();
+        const isHere = here.includes("here") || here.includes("stock");
+        if (!line.usrETA) return isHere;
+        const eta = new Date(line.usrETA);
+        if (Number.isNaN(eta.getTime())) return isHere;
+        eta.setHours(0, 0, 0, 0);
+        if (eta > today) return false;
+        return isHere;
+      });
+    },
     [detail]
   );
   const backordered = useMemo(
-    () => detail?.lines.filter((line) => (line.openQty ?? 0) > 0) ?? [],
+    () => {
+      if (!detail?.lines?.length) return [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return detail.lines.filter((line) => {
+        if (line.isAllocated) return false;
+        const here = (line.here ?? "").toLowerCase();
+        const isHere = here.includes("here") || here.includes("stock");
+        if (!line.usrETA) return !isHere;
+        const eta = new Date(line.usrETA);
+        if (Number.isNaN(eta.getTime())) return !isHere;
+        eta.setHours(0, 0, 0, 0);
+        if (eta > today) return true;
+        return !isHere;
+      });
+    },
     [detail]
   );
+  const formatInventoryId = (value: string | null) => {
+    const text = formatText(value);
+    return text ? text.toUpperCase() : text;
+  };
+  const getEtaLabel = (line: OrderLine) => {
+    if (!line.usrETA) return "Not set";
+    const eta = new Date(line.usrETA);
+    if (Number.isNaN(eta.getTime())) return "Not set";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    eta.setHours(0, 0, 0, 0);
+    if (eta > today) return formatDate(line.usrETA);
+    return "Not set";
+  };
+  const getQtyValue = (line: OrderLine) =>
+    line.isAllocated ? line.allocatedQty ?? null : line.openQty ?? null;
+  const paymentTermsUpper = useMemo(
+    () => (detail?.payment?.terms ?? "").trim().toUpperCase(),
+    [detail?.payment?.terms]
+  );
+  const hidePayment = useMemo(() => /^N\\d/.test(paymentTermsUpper), [paymentTermsUpper]);
+  const salesPerson = detail?.summary.salesPerson ?? null;
 
   const formatAppointmentTime = (startAt: string, endAt: string) => {
     const start = new Date(startAt);
@@ -393,7 +431,11 @@ export default function OrderDetailPage() {
               <Card className="shadow-xl border-0">
                 <CardHeader>
                   <CardTitle className="flex flex-wrap items-center gap-3">
-                    <span className="text-2xl font-bold">Order {detail.summary.orderNbr}</span>
+                    <span className="text-2xl font-bold">
+                      {detail.summary.buyerGroup
+                        ? `${detail.summary.buyerGroup} Order ${detail.summary.orderNbr}`
+                        : `Order ${detail.summary.orderNbr}`}
+                    </span>
                     {detail.summary.paymentStatus ? (
                       <Badge variant="outline">{detail.summary.paymentStatus}</Badge>
                     ) : null}
@@ -406,23 +448,17 @@ export default function OrderDetailPage() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Package className="h-4 w-4" />
-                      Summary
+                      Salesperson
                     </div>
                     <div className="space-y-1 text-sm">
                       <div>
-                        Type: <span className="font-semibold">{formatText(detail.summary.orderType)}</span>
+                        Name: <span className="font-medium">{salesPerson?.name ?? "Not set"}</span>
                       </div>
                       <div>
-                        Status: <span className="font-semibold">{formatText(detail.summary.status)}</span>
+                        Phone: <span className="font-medium">{salesPerson?.phone ?? "Not set"}</span>
                       </div>
                       <div>
-                        Delivery: <span className="font-medium">{formatDate(detail.summary.deliveryDate)}</span>
-                      </div>
-                      <div>
-                        Ship Via: <span className="font-medium">{formatText(detail.summary.shipVia)}</span>
-                      </div>
-                      <div>
-                        Buyer Group: <span className="font-medium">{formatText(detail.summary.buyerGroup)}</span>
+                        Email: <span className="font-medium">{salesPerson?.email ?? "Not set"}</span>
                       </div>
                     </div>
                   </div>
@@ -442,34 +478,25 @@ export default function OrderDetailPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Wallet className="h-4 w-4" />
-                      Payment
-                    </div>
-                    <div className="space-y-1 text-sm">
-                      <div>
-                        Total: <span className="font-semibold">{formatMoney(detail.payment?.orderTotal ?? null)}</span>
+                  {!hidePayment ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Wallet className="h-4 w-4" />
+                        Payment
                       </div>
-                      <div>
-                        Balance: <span className="font-semibold">{formatMoney(detail.payment?.unpaidBalance ?? null)}</span>
-                      </div>
-                      <div>
-                        Terms: <span className="italic">{formatText(detail.payment?.terms ?? null)}</span>
-                      </div>
-                      <div>
-                        Status: <span className="font-medium">{formatText(detail.payment?.status ?? null)}</span>
-                      </div>
-                      {detail.summary.salesPerson ? (
+                      <div className="space-y-1 text-sm">
                         <div>
-                          Salesperson:{" "}
-                          <span className="font-medium">
-                            {formatSalespersonContact(detail.summary.salesPerson)}
-                          </span>
+                          Total: <span className="font-semibold">{formatMoney(detail.payment?.orderTotal ?? null)}</span>
                         </div>
-                      ) : null}
+                        <div>
+                          Balance: <span className="font-semibold">{formatMoney(detail.payment?.unpaidBalance ?? null)}</span>
+                        </div>
+                        <div>
+                          Terms: <span className="italic">{paymentTermsUpper || "Not set"}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </CardContent>
               </Card>
 
@@ -576,7 +603,7 @@ export default function OrderDetailPage() {
                       <TableBody>
                         {itemsHere.map((line) => (
                           <TableRow key={line.id}>
-                            <TableCell>{formatText(line.inventoryId)}</TableCell>
+                            <TableCell>{formatInventoryId(line.inventoryId)}</TableCell>
                             <TableCell>{formatText(line.lineDescription)}</TableCell>
                             <TableCell>{formatText(line.warehouse)}</TableCell>
                             <TableCell>{formatText(line.here) || "Yes"}</TableCell>
@@ -610,10 +637,10 @@ export default function OrderDetailPage() {
                       <TableBody>
                         {backordered.map((line) => (
                           <TableRow key={line.id}>
-                            <TableCell>{formatText(line.inventoryId)}</TableCell>
+                            <TableCell>{formatInventoryId(line.inventoryId)}</TableCell>
                             <TableCell>{formatText(line.lineDescription)}</TableCell>
-                            <TableCell>{formatQty(line.openQty)}</TableCell>
-                            <TableCell>{formatDate(line.usrETA)}</TableCell>
+                            <TableCell>{formatQty(getQtyValue(line))}</TableCell>
+                            <TableCell>{getEtaLabel(line)}</TableCell>
                             <TableCell>{formatText(line.warehouse)}</TableCell>
                           </TableRow>
                         ))}

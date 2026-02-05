@@ -87,11 +87,24 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                       ? "Admin"
                       : session.user.role === "VIEWER"
                         ? "Viewer"
-                        : session.user.role === "SALESPERSON"
+                      : session.user.role === "SALESPERSON"
                           ? "Salesperson"
                           : "Staff"}
                   </span>
                 </div>
+                {session.user.role === "SALESPERSON" ? (
+                  <Link
+                    href="/staff/salesperson-profile"
+                    className={cn(
+                      "px-3 py-2 text-sm rounded-md transition-colors border border-input bg-white",
+                      pathname.startsWith("/staff/salesperson-profile")
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                  >
+                    My Profile
+                  </Link>
+                ) : null}
                 <Button
                   variant="outline"
                   className="bg-white"

@@ -103,7 +103,11 @@ export default function SalespersonProfilePage() {
       if (!res.ok) {
         throw new Error(data?.message || "Unable to save profile");
       }
-      await update({ mustCompleteProfile: false });
+      if (data?.token) {
+        await update({ user: { staffToken: data.token, mustCompleteProfile: false } });
+      } else {
+        await update({ user: { mustCompleteProfile: false } });
+      }
       toast({ title: "Profile saved", description: "Thanks! You're all set." });
       router.replace("/staff/pickups");
       router.refresh();

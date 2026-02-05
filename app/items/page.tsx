@@ -283,6 +283,7 @@ const ItemSelectionPage: React.FC = () => {
             expanded: index === 0,
             payment: result.payment,
             pickedUpValue: result.pickedUpValue,
+            salesPerson: result.salesPerson ?? null,
           }))
         );
       })
@@ -546,7 +547,8 @@ const ItemSelectionPage: React.FC = () => {
                     Prepay balance required.
                   </p>
                   <p className="mt-1 text-xs text-[#b13d2b]">
-                    Additional payment is due. Please call (801)-466-0990 Ext. 3 or{" "}
+                    Additional payment is due. To make a payment, please call our accounting team at
+                    {" "}(801)-466-0990 Ext. 3 or your salesperson{" "}
                     {formatSalespersonContact(paymentBlocks[0]?.salesPerson ?? null)}.
                   </p>
                   <div className="mt-3 space-y-2 text-xs">
