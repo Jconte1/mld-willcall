@@ -1,4 +1,4 @@
-"use client";
+ï»¿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -269,7 +269,7 @@ export default function OrderDetailPage() {
     const date = start.toLocaleDateString();
     const time = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const endTime = end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    return `Scheduled for ${date} • ${time}–${endTime}`;
+    return `Scheduled for ${date} ï¿½ ${time}ï¿½${endTime}`;
   };
 
   const handleCancel = async () => {
