@@ -2,8 +2,9 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -202,6 +203,8 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const isViewer = session?.user?.role === "VIEWER";
   const isAdmin = session?.user?.role === "ADMIN";
   const [view, setView] = useState<"day" | "week">("week");
@@ -413,6 +416,12 @@ export default function StaffPickupsPage() {
   useEffect(() => {
     fetchAppointments();
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
+
+  useEffect(() => {
+    if (!searchParams?.get("new")) return;
+    handleOpenCreate();
+    router.replace("/staff/pickups");
+  }, [searchParams, router]);
 
   const filteredAppointments = useMemo(() => {
     let rows = appointments;
@@ -942,6 +951,18 @@ export default function StaffPickupsPage() {
             </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {view === "day" ? (
+              <Input
+                type="date"
+                value={format(selectedDate, "yyyy-MM-dd")}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (next) setSelectedDate(parseISO(next));
+                }}
+                className="w-[160px]"
+              />
+            ) : null}
+
             <Tabs value={view} onValueChange={(val) => setView(val as "day" | "week")}>
               <TabsList className="bg-white">
                 <TabsTrigger value="day">Day</TabsTrigger>
@@ -950,31 +971,16 @@ export default function StaffPickupsPage() {
             </Tabs>
 
             <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-            </div>
-
-              {view === "day" ? (
-                <Input
-                  type="date"
-                  value={format(selectedDate, "yyyy-MM-dd")}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (next) setSelectedDate(parseISO(next));
-                  }}
-                  className="w-[160px]"
-                />
-              ) : null}
-
-              <Button variant="hero" onClick={handleOpenCreate} disabled={isViewer}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Appointment
+              <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+
+            {/* moved to staff nav */}
+          </div>
           </div>
         </CardHeader>
 

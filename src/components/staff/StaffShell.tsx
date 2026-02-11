@@ -110,13 +110,13 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-        <div className="container flex h-16 items-center justify-between">
+        <div className="container max-w-none px-6 flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link href="/staff" className="font-semibold tracking-tight">
+            <Link href="/staff" className="font-semibold tracking-tight ml-6">
               Dashboard
             </Link>
 
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-1 ml-3">
               {visibleNav.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + "/");
                 return (
@@ -171,7 +171,14 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                   className="bg-white"
                   onClick={() => setShowInviteDialog(true)}
                 >
-                  Resend invite
+                  Invite a customer
+                </Button>
+                <Button
+                  variant="outline"
+                  className="bg-white"
+                  onClick={() => router.push("/staff/pickups?new=1")}
+                >
+                  + New Appointment
                 </Button>
                 <Button
                   variant="outline"
