@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -204,7 +204,7 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const [shouldOpenNew, setShouldOpenNew] = useState(false);
   const isViewer = session?.user?.role === "VIEWER";
   const isAdmin = session?.user?.role === "ADMIN";
   const [view, setView] = useState<"day" | "week">("week");
@@ -418,10 +418,19 @@ export default function StaffPickupsPage() {
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
 
   useEffect(() => {
-    if (!searchParams?.get("new")) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new")) {
+      setShouldOpenNew(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!shouldOpenNew) return;
     handleOpenCreate();
     router.replace("/staff/pickups");
-  }, [searchParams, router]);
+    setShouldOpenNew(false);
+  }, [shouldOpenNew, router]);
 
   const filteredAppointments = useMemo(() => {
     let rows = appointments;
