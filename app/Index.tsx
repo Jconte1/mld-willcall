@@ -212,8 +212,8 @@ const Index: React.FC = () => {
     const normalized = overrideInput.trim().toUpperCase();
     if (!/^BA\\d{7}$/.test(normalized)) {
       toast({
-        title: "Invalid BAID",
-        description: "Enter a BAID in the format BA1234567.",
+        title: "Invalid Customer ID#",
+        description: "Enter a Customer ID# in the format BA1234567.",
       });
       return;
     }
@@ -887,7 +887,7 @@ const Index: React.FC = () => {
                     </CardHeader>
                     <CardContent className="space-y-3 text-sm">
                       <div>
-                        <label className="text-xs text-muted-foreground">Override BAID</label>
+                                  <label className="text-xs text-muted-foreground">Override Customer ID#</label>
                         <Input
                           value={overrideInput}
                           onChange={(event) => setOverrideInput(event.target.value.toUpperCase())}
@@ -905,7 +905,7 @@ const Index: React.FC = () => {
                       </div>
                       {overrideBaid ? (
                         <p className="text-xs text-muted-foreground">
-                          Viewing BAID {overrideBaid}
+                          Viewing Customer ID# {overrideBaid}
                         </p>
                       ) : null}
                     </CardContent>
@@ -1358,7 +1358,7 @@ const Index: React.FC = () => {
                             >
                               <div className="flex items-center justify-between">
                                 <span className="font-medium text-foreground">
-                                  {req.baid || "Unknown BAID"}
+                                  {req.baid || "Unknown Customer ID#"}
                                 </span>
                                 <Badge variant={req.result === "success" ? "default" : "outline"}>
                                   {req.result}

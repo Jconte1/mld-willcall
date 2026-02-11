@@ -41,7 +41,7 @@ const registerSchema = z
     baid: z
       .string()
       .transform((v) => v.trim())
-      .refine((v) => BAID_REGEX.test(v), { message: "BAID must be BA + 7 digits" }),
+      .refine((v) => BAID_REGEX.test(v), { message: "Customer ID# must be BA + 7 digits" }),
     inviteCode: z.string().min(6, "Invite code is required"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(6, "Confirm your password"),
@@ -188,18 +188,26 @@ export default function CustomerAuthCard() {
     const zip = normalizeZip(registerForm.getValues("zip"));
 
     if (!BAID_REGEX.test(baid)) {
-      setVerifyState({ status: "failed", message: "Enter a valid BAID (BA + 7 digits)." });
-      return;
+      setVerifyState({
+        status: "failed",
+        message:
+          "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+      });
+      return false;
     }
 
     if (zip.length !== 5) {
-      setVerifyState({ status: "failed", message: "Enter a 5-digit billing ZIP code." });
-      return;
+      setVerifyState({
+        status: "failed",
+        message:
+          "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+      });
+      return false;
     }
 
     if (isLocked) {
       setVerifyState({ status: "failed", message: "Too many attempts. Please try again later." });
-      return;
+      return false;
     }
 
     setVerifyState({ status: "verifying" });
@@ -229,9 +237,12 @@ export default function CustomerAuthCard() {
           // ignore
         }
 
-        const msg = data?.message ?? "BAID verification failed";
-        setVerifyState({ status: "failed", message: msg });
-        return;
+        setVerifyState({
+          status: "failed",
+          message:
+            "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+        });
+        return false;
       }
 
       // success -> clear attempts + lock
@@ -244,24 +255,42 @@ export default function CustomerAuthCard() {
 
       setLockedUntil(0);
       setVerifyState({ status: "verified", baid });
-      toast({ title: "BAID verified", description: "You're good to finish creating your account." });
+      return true;
     } catch {
       setVerifyState({ status: "failed", message: "Unable to verify right now. Please try again." });
+      return false;
     }
   };
 
   const onRegister = async (values: RegisterValues) => {
     const baid = normalizeBaid(values.baid);
-
-    // Must be verified before we let them submit registration.
-    if (!(verifyState.status === "verified" && verifyState.baid === baid)) {
-      toast({ title: "Verify BAID", description: "Please verify your BAID before creating an account." });
-      setTab("register");
-      return;
-    }
+    const zip = normalizeZip(values.zip);
 
     setBusy(true);
     try {
+      if (isLocked) {
+        setVerifyState({
+          status: "failed",
+          message: "Too many attempts. Please try again later.",
+        });
+        toast({
+          title: "Unable to verify",
+          description: "Too many attempts. Please try again later.",
+        });
+        return;
+      }
+
+      setVerifyState({ status: "verifying" });
+      const verified = await onVerifyBaid();
+      if (!verified) {
+        toast({
+          title: "Unable to verify",
+          description:
+            "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+        });
+        return;
+      }
+
       const res = await fetch("/api/customer/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,7 +299,7 @@ export default function CustomerAuthCard() {
           email: values.email,
           phone: values.phone,
           baid: baid,
-          zip: normalizeZip(values.zip),
+          zip,
           inviteCode: values.inviteCode,
           password: values.password,
         }),
@@ -279,8 +308,11 @@ export default function CustomerAuthCard() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        const msg = data?.message ?? "Registration failed";
-        toast({ title: "Registration failed", description: msg });
+        toast({
+          title: "Registration failed",
+          description:
+            "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+        });
         return;
       }
 
@@ -393,7 +425,7 @@ export default function CustomerAuthCard() {
     const zip = normalizeZip(registerForm.getValues("zip"));
 
     if (!BAID_REGEX.test(baid)) {
-      toast({ title: "Check BAID", description: "Enter a valid BAID to request a new code." });
+      toast({ title: "Check Customer ID#", description: "Enter a valid Customer ID# to request a new code." });
       return;
     }
     if (zip.length !== 5) {
@@ -668,22 +700,22 @@ export default function CustomerAuthCard() {
                     name="baid"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>BAID</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your BAID"
-                            autoComplete="off"
-                            {...field}
-                            onChange={(e) => {
-                              field.onChange(e.target.value);
-                              if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                            <FormLabel>Customer ID#</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter your Customer ID#"
+                                autoComplete="off"
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
                   <FormField
                     control={registerForm.control}
@@ -709,25 +741,10 @@ export default function CustomerAuthCard() {
                             </FormControl>
                           </div>
 
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="shrink-0"
-                            onClick={onVerifyBaid}
-                            disabled={
-                              busy ||
-                              verifyState.status === "verifying" ||
-                              !baidLooksValid ||
-                              !zipLooksValid ||
-                              isLocked
-                            }
-                          >
-                            Verify
-                          </Button>
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          Your BAID is provided to you by MLD. You must verify it before creating your account.
+                          Your Customer ID# is provided to you by MLD. We'll verify it when you create your account.
                         </p>
 
                         <div className="min-h-[20px]">{verifyUi}</div>
@@ -769,16 +786,11 @@ export default function CustomerAuthCard() {
                     type="submit"
                     variant="hero"
                     className="w-full"
-                    disabled={busy || !(verifyState.status === "verified" && verifyState.baid === normalizedBaid)}
+                    disabled={busy}
                   >
                     {busy ? "Creating account..." : "Create account"}
                   </Button>
 
-                  {!(verifyState.status === "verified" && verifyState.baid === normalizedBaid) ? (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Verify your BAID to enable account creation.
-                    </p>
-                  ) : null}
                 </form>
               </Form>
 
@@ -787,11 +799,11 @@ export default function CustomerAuthCard() {
                   <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
                     <div className="text-sm font-semibold text-foreground">Request a new invite code</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Enter your BAID and billing ZIP to request a new code.
+                      Enter your Customer ID# and billing ZIP to request a new code.
                     </p>
                     <div className="mt-4 space-y-3">
                       <div>
-                        <label className="text-xs text-muted-foreground">BAID</label>
+                        <label className="text-xs text-muted-foreground">Customer ID#</label>
                         <Input
                           value={registerForm.getValues("baid")}
                           onChange={(event) => {
