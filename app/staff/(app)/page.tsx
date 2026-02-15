@@ -363,8 +363,8 @@ export default function StaffHomePage() {
                               isCancelled && "opacity-60 grayscale"
                             )}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
+                            <div className="flex flex-wrap items-start gap-2">
+                              <div className="order-2 w-full sm:order-1 sm:w-auto">
                                 <div className="text-sm font-semibold">
                                   {apt.customerFirstName} {apt.customerLastName ?? ""}
                                 </div>
@@ -372,38 +372,39 @@ export default function StaffHomePage() {
                                   {format(new Date(apt.startAt), "MMM d, h:mm a")} · {apt.locationId}
                                 </div>
                               </div>
-                              <span
-                                className={cn(
-                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide",
-                                  STATUS_STYLES[apt.status]
-                                )}
-                              >
-                                {apt.status}
-                              </span>
-                              {idx === 1 ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="bg-white hover:bg-muted/60"
-                                  onClick={() => markReady(apt)}
-                                  disabled={!allShipped || isLocked}
+                              <div className="order-1 flex items-center gap-2 sm:order-2 sm:ml-auto">
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide",
+                                    STATUS_STYLES[apt.status]
+                                  )}
                                 >
-                                  Mark ready
-                                </Button>
-                              ) : null}
-                              {idx === 2 ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="bg-white hover:bg-muted/60"
-                                  onClick={() => markComplete(apt)}
-                                  disabled={!allShipped || isLocked}
-                                >
-                                  Mark complete
-                                </Button>
-                              ) : null}
+                                  {apt.status}
+                                </span>
+                                {idx === 1 ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-white hover:bg-muted/60"
+                                    onClick={() => markReady(apt)}
+                                    disabled={!allShipped || isLocked}
+                                  >
+                                    Mark ready
+                                  </Button>
+                                ) : null}
+                                {idx === 2 ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-white hover:bg-muted/60"
+                                    onClick={() => markComplete(apt)}
+                                    disabled={!allShipped || isLocked}
+                                  >
+                                    Mark complete
+                                  </Button>
+                                ) : null}
+                              </div>
                             </div>
-
                             <div className="mt-3 space-y-2">
                               {apt.orders.map((order) => {
                                 const shipments = perOrder[order.orderNbr] ?? [];
@@ -523,3 +524,9 @@ export default function StaffHomePage() {
     </div>
   );
 }
+
+
+
+
+
+

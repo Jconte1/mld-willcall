@@ -78,7 +78,7 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({
             >
               <span className="text-sm font-medium">{formatTime(slot.startTime)}</span>
               {!isAvailable && (
-                <span className="text-xs mt-0.5">Full</span>
+                <span className="text-xs mt-0.5">Unavailable</span>
               )}
             </button>
           );
