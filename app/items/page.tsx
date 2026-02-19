@@ -326,51 +326,26 @@ const ItemSelectionPage: React.FC = () => {
       .map((group) => {
         const terms = (group.payment.terms ?? "").trim().toUpperCase();
         if (!PREPAY_TERMS.has(terms)) return null;
-        const orderTotal = group.payment.orderTotal ?? 0;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
-        const paid = Math.max(0, orderTotal - unpaidBalance);
-
-        const remainingValueRaw = group.items.reduce((sum, item) => {
+        const remainingGoodsPreTaxRaw = group.items.reduce((sum, item) => {
           const orderQty = item.orderQty ?? 0;
           const lineAmount = item.lineAmount ?? 0;
-          const taxRate = item.taxRate ?? 0;
           if (orderQty <= 0) return sum;
           const perUnitPreTax = lineAmount / orderQty;
-          const perUnitTax = perUnitPreTax * (taxRate / 100);
           const openQty = Math.max(0, item.openQty ?? 0);
           const selectedQty = item.selected ? item.qty : 0;
           const remainingQty = Math.max(0, openQty - selectedQty);
-          return sum + remainingQty * (perUnitPreTax + perUnitTax);
+          return sum + remainingQty * perUnitPreTax;
         }, 0);
-
-        const remainingValue = Math.round(remainingValueRaw * 100) / 100;
-        const selectedValueRaw = group.items.reduce((sum, item) => {
-          if (!item.selected) return sum;
-          const orderQty = item.orderQty ?? 0;
-          const lineAmount = item.lineAmount ?? 0;
-          const taxRate = item.taxRate ?? 0;
-          if (orderQty <= 0) return sum;
-          const perUnitPreTax = lineAmount / orderQty;
-          const perUnitTax = perUnitPreTax * (taxRate / 100);
-          return sum + item.qty * (perUnitPreTax + perUnitTax);
-        }, 0);
-        const selectedValue = Math.round(selectedValueRaw * 100) / 100;
-        const amountOwed =
-          remainingValue === 0
-            ? Math.max(0, unpaidBalance)
-            : Math.max(
-                0,
-                group.pickedUpValue + selectedValue + remainingValue * 0.5 - paid
-              );
+        const remainingValue = Math.round(remainingGoodsPreTaxRaw * 100) / 100;
+        const retainRequired = remainingValue * 0.5;
+        const amountOwed = Math.max(0, unpaidBalance - retainRequired);
 
         console.log("[prepay-calc]", {
           orderNbr: group.orderNbr,
-          orderTotal,
           unpaidBalance,
-          paid,
-          selectedValue,
+          retainRequired,
           remainingValue,
-          pickedUpValue: group.pickedUpValue,
           amountOwed,
           terms,
         });
@@ -379,7 +354,6 @@ const ItemSelectionPage: React.FC = () => {
         return {
           orderNbr: group.orderNbr,
           remainingValue,
-          selectedValue,
           amountOwed,
           salesPerson: group.salesPerson ?? null,
         };
@@ -387,7 +361,6 @@ const ItemSelectionPage: React.FC = () => {
       .filter(Boolean) as Array<{
       orderNbr: string;
       remainingValue: number;
-      selectedValue: number;
       amountOwed: number;
       salesPerson?: {
         number: string;

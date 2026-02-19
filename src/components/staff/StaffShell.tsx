@@ -173,13 +173,24 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 >
                   Invite a customer
                 </Button>
-                <Button
-                  variant="outline"
-                  className="bg-white"
-                  onClick={() => router.push("/staff/pickups?new=1")}
-                >
-                  + New Appointment
-                </Button>
+                {session.user.role === "ADMIN" || session.user.role === "STAFF" ? (
+                  <Button
+                    variant="outline"
+                    className="bg-white"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.sessionStorage.setItem("staff_pickups_open_new", "1");
+                        if (pathname.startsWith("/staff/pickups")) {
+                          window.dispatchEvent(new Event("staff:new-appointment"));
+                        } else {
+                          router.push("/staff/pickups");
+                        }
+                      }
+                    }}
+                  >
+                    + New Appointment
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   className="bg-white"

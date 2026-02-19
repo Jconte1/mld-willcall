@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -51,6 +50,31 @@ type StaffOrderLine = {
   openQty: number | null;
   orderQty: number | null;
   warehouse: string | null;
+  allocatedQty?: number | null;
+  isAllocated?: boolean;
+  lineAmount?: number | null;
+  taxRate?: number | null;
+};
+
+type StaffOrderPayment = {
+  orderTotal: number;
+  unpaidBalance: number;
+  terms: string | null;
+  status: string | null;
+};
+
+type StaffCreateOrder = {
+  orderNbr: string;
+  baid: string;
+  status: string;
+  shipVia: string | null;
+  payment: StaffOrderPayment;
+  salesPerson: {
+    number: string | null;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
 };
 
 type StaffAppointmentLine = {
@@ -94,6 +118,7 @@ const SLOT_MINUTES = 15;
 const SLOT_HEIGHT_WEEK = 64;
 const SLOT_HEIGHT_DAY = 72;
 const SHIPMENT_FORMAT = /^SMT\d{7}$/;
+const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
 const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
@@ -203,10 +228,10 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
-  const router = useRouter();
   const [shouldOpenNew, setShouldOpenNew] = useState(false);
   const isViewer = session?.user?.role === "VIEWER";
   const isAdmin = session?.user?.role === "ADMIN";
+  const canCreate = session?.user?.role === "ADMIN" || session?.user?.role === "STAFF";
   const [view, setView] = useState<"day" | "week">("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [appointments, setAppointments] = useState<StaffPickup[]>([]);
@@ -240,6 +265,13 @@ export default function StaffPickupsPage() {
     status: AppointmentStatus;
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [createOrderInput, setCreateOrderInput] = useState("");
+  const [createOrderLoading, setCreateOrderLoading] = useState(false);
+  const [createOrderError, setCreateOrderError] = useState("");
+  const [createModalError, setCreateModalError] = useState("");
+  const [createOrders, setCreateOrders] = useState<StaffCreateOrder[]>([]);
+  const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
+  const [prepayOverride, setPrepayOverride] = useState(false);
   const [formData, setFormData] = useState({
     locationId: "",
     customerEmail: "",
@@ -419,18 +451,31 @@ export default function StaffPickupsPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("new")) {
-      setShouldOpenNew(true);
-    }
+
+    const consumeNewFlag = () => {
+      const flag = window.sessionStorage.getItem("staff_pickups_open_new");
+      if (flag === "1") {
+        window.sessionStorage.removeItem("staff_pickups_open_new");
+        setShouldOpenNew(true);
+      }
+    };
+
+    const onOpenNew = () => setShouldOpenNew(true);
+
+    consumeNewFlag();
+    window.addEventListener("staff:new-appointment", onOpenNew);
+    return () => window.removeEventListener("staff:new-appointment", onOpenNew);
   }, []);
 
   useEffect(() => {
     if (!shouldOpenNew) return;
+    if (!canCreate) {
+      setShouldOpenNew(false);
+      return;
+    }
     handleOpenCreate();
-    router.replace("/staff/pickups");
     setShouldOpenNew(false);
-  }, [shouldOpenNew, router]);
+  }, [shouldOpenNew, canCreate]);
 
   const filteredAppointments = useMemo(() => {
     let rows = appointments;
@@ -525,6 +570,65 @@ export default function StaffPickupsPage() {
         items: selection.items.filter((item) => item.qty > 0 && item.inventoryId),
       }))
       .filter((selection) => selection.items.length > 0);
+
+  const formatPhone = (value?: string | null) => {
+    if (!value) return null;
+    const digits = value.replace(/\D/g, "");
+    if (digits.length === 10) {
+      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    return value;
+  };
+
+  const formatSalesPersonContact = (salesPerson?: StaffCreateOrder["salesPerson"] | null) => {
+    if (!salesPerson) return "your salesperson";
+    const label = salesPerson.name || salesPerson.number || "your salesperson";
+    const contact: string[] = [];
+    const phone = formatPhone(salesPerson.phone);
+    if (phone) contact.push(phone);
+    if (salesPerson.email) contact.push(salesPerson.email);
+    if (!contact.length) return label;
+    return `${label} at ${contact.join(" or ")}`;
+  };
+
+  const createPrepayBlocks = useMemo(() => {
+    if (!isCreating) return [];
+    return createOrders
+      .map((order) => {
+        const terms = (order.payment.terms ?? "").trim().toUpperCase();
+        if (!PREPAY_TERMS.has(terms)) return null;
+        const lines = orderLinesByOrder[order.orderNbr] ?? [];
+        const selectedByLine = selectionsByOrder.get(order.orderNbr) ?? new Map();
+        const unpaidBalance = Number(order.payment.unpaidBalance ?? 0) || 0;
+
+        const remainingGoodsPreTax = lines.reduce((sum, line) => {
+          const orderQty = Number(line.orderQty ?? 0) || 0;
+          const lineAmount = Number(line.lineAmount ?? 0) || 0;
+          if (orderQty <= 0) return sum;
+          const selected = selectedByLine.get(line.id);
+          const selectedQty = selected ? selected.qty : 0;
+          const openQty = Math.max(0, Number(line.openQty ?? 0));
+          const remainingQty = Math.max(0, openQty - selectedQty);
+          if (remainingQty <= 0) return sum;
+          const perUnitPreTax = lineAmount / orderQty;
+          return sum + remainingQty * perUnitPreTax;
+        }, 0);
+
+        const retainRequired = remainingGoodsPreTax * 0.5;
+        const amountOwed = Math.max(0, unpaidBalance - retainRequired);
+        if (amountOwed <= 0) return null;
+        return {
+          orderNbr: order.orderNbr,
+          amountOwed: Math.round(amountOwed * 100) / 100,
+          salesPerson: order.salesPerson,
+        };
+      })
+      .filter(Boolean) as Array<{
+      orderNbr: string;
+      amountOwed: number;
+      salesPerson: StaffCreateOrder["salesPerson"] | null;
+    }>;
+  }, [createOrders, isCreating, orderLinesByOrder, selectionsByOrder]);
 
   const shipmentDirty = useMemo(() => {
     const keys = new Set([...Object.keys(shipmentDrafts), ...Object.keys(shipmentOriginals)]);
@@ -659,7 +763,173 @@ export default function StaffPickupsPage() {
     setDialogOpen(true);
   };
 
+  const addCreateOrder = async () => {
+    const orderNbr = createOrderInput.trim().toUpperCase();
+    setCreateModalError("");
+    console.info("[staff-create-appointment] add order click", {
+      orderNbr,
+      existingCount: createOrders.length,
+    });
+    if (!orderNbr) return;
+    if (createOrders.some((order) => order.orderNbr === orderNbr)) {
+      console.warn("[staff-create-appointment] duplicate order blocked", { orderNbr });
+      const message = `Order ${orderNbr} is already added.`;
+      setCreateOrderError(message);
+      setCreateModalError(message);
+      return;
+    }
+
+    setCreateOrderLoading(true);
+    setCreateOrderError("");
+    try {
+      console.info("[staff-create-appointment] lookup start", { orderNbr });
+      const res = await fetch("/api/staff/pickups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookupOrder: true, orderNbr }),
+      });
+      const data = await res.json().catch(() => ({}));
+      console.info("[staff-create-appointment] lookup response", {
+        orderNbr,
+        status: res.status,
+        ok: res.ok,
+        message: data?.message,
+        hasOrder: Boolean(data?.order),
+      });
+      if (!res.ok) {
+        const message = data?.message ?? "Unable to load order.";
+        setCreateOrderError(message);
+        setCreateModalError(message);
+        return;
+      }
+
+      const order = data?.order as StaffCreateOrder & { lines?: StaffOrderLine[] };
+      if (!order?.orderNbr) {
+        setCreateOrderError("Unable to load order.");
+        return;
+      }
+
+      const lines: StaffOrderLine[] = Array.isArray(order.lines)
+        ? order.lines.map((line) => ({
+            id: line.id,
+            orderNbr: order.orderNbr,
+            inventoryId: line.inventoryId,
+            lineDescription: line.lineDescription,
+            openQty: Number(line.openQty ?? 0),
+            orderQty: Number(line.orderQty ?? 0),
+            warehouse: line.warehouse,
+            allocatedQty: Number(line.allocatedQty ?? 0),
+            isAllocated: Boolean(line.isAllocated),
+            lineAmount: Number(line.lineAmount ?? (line as any).amount ?? 0),
+            taxRate: Number(line.taxRate ?? 0),
+          }))
+            .sort((a, b) => {
+              const aAvailable =
+                Number(a.openQty ?? 0) > 0 &&
+                Boolean(a.isAllocated) &&
+                Number(a.allocatedQty ?? 0) > 0 &&
+                Boolean(a.inventoryId);
+              const bAvailable =
+                Number(b.openQty ?? 0) > 0 &&
+                Boolean(b.isAllocated) &&
+                Number(b.allocatedQty ?? 0) > 0 &&
+                Boolean(b.inventoryId);
+              if (aAvailable === bAvailable) return 0;
+              return aAvailable ? -1 : 1;
+            })
+        : [];
+
+      const selected = lines
+        .filter((line) => {
+          const openQty = Number(line.openQty ?? 0);
+          const allocatedQty = Number(line.allocatedQty ?? 0);
+          return Boolean(line.inventoryId) && openQty > 0 && Boolean(line.isAllocated) && allocatedQty > 0;
+        })
+        .map((line) => ({
+          lineId: line.id,
+          inventoryId: line.inventoryId ?? "",
+          description: line.lineDescription ?? undefined,
+          qty: Math.max(1, Math.floor(Number(line.openQty ?? 0))),
+          maxQty: Math.max(1, Math.floor(Number(line.openQty ?? 0))),
+          warehouse: line.warehouse ?? undefined,
+        }));
+      console.info("[staff-create-appointment] lookup parsed", {
+        orderNbr: order.orderNbr,
+        lineCount: lines.length,
+        defaultSelectedCount: selected.length,
+        terms: order.payment?.terms ?? null,
+        unpaidBalance: Number(order.payment?.unpaidBalance ?? 0),
+      });
+
+      setCreateOrders((prev) => [...prev, {
+        orderNbr: order.orderNbr,
+        baid: order.baid,
+        status: order.status,
+        shipVia: order.shipVia,
+        payment: order.payment,
+        salesPerson: order.salesPerson ?? null,
+      }]);
+      setOrderLinesByOrder((prev) => ({ ...prev, [order.orderNbr]: lines }));
+      if (selected.length) {
+        setSelectedItems((prev) => [...prev, { orderNbr: order.orderNbr, items: selected }]);
+      }
+      setCreateOrderInput("");
+      console.info("[staff-create-appointment] order added", {
+        orderNbr: order.orderNbr,
+      });
+    } finally {
+      setCreateOrderLoading(false);
+    }
+  };
+
+  const removeCreateOrder = (orderNbr: string) => {
+    console.info("[staff-create-appointment] remove order", { orderNbr });
+    setCreateOrders((prev) => prev.filter((row) => row.orderNbr !== orderNbr));
+    setOrderLinesByOrder((prev) => {
+      const next = { ...prev };
+      delete next[orderNbr];
+      return next;
+    });
+    setSelectedItems((prev) => prev.filter((row) => row.orderNbr !== orderNbr));
+    setCreateOrderSearch((prev) => {
+      const next = { ...prev };
+      delete next[orderNbr];
+      return next;
+    });
+  };
+
+  const handleCreateSelectAll = (orderNbr: string) => {
+    const lines = orderLinesByOrder[orderNbr] ?? [];
+    const items = lines
+      .filter((line) => {
+        const openQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+        const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
+        return openQty > 0 && Boolean(line.inventoryId) && Boolean(line.isAllocated) && allocatedQty > 0;
+      })
+      .map((line) => ({
+        lineId: line.id,
+        inventoryId: line.inventoryId ?? "",
+        description: line.lineDescription ?? undefined,
+        qty: Math.max(1, Math.floor(Number(line.openQty ?? 0))),
+        maxQty: Math.max(1, Math.floor(Number(line.openQty ?? 0))),
+        warehouse: line.warehouse ?? undefined,
+      }));
+    setSelectedItems((prev) => {
+      const rest = prev.filter((row) => row.orderNbr !== orderNbr);
+      if (!items.length) return rest;
+      return [...rest, { orderNbr, items }];
+    });
+  };
+
+  const handleCreateUnselectAll = (orderNbr: string) => {
+    setSelectedItems((prev) => prev.filter((row) => row.orderNbr !== orderNbr));
+  };
+
   const handleOpenCreate = () => {
+    console.info("[staff-create-appointment] open create modal", {
+      selectedDate: selectedDate.toISOString(),
+      locationDefault: selectedLocations[0] ?? null,
+    });
     setActiveAppointment(null);
     setIsCreating(true);
     setItemsError("");
@@ -669,6 +939,12 @@ export default function StaffPickupsPage() {
     setShipmentDrafts({});
     setShipmentOriginals({});
     setShipmentEditing(true);
+    setCreateOrderInput("");
+    setCreateOrderLoading(false);
+    setCreateOrderError("");
+    setCreateModalError("");
+    setCreateOrders([]);
+    setPrepayOverride(false);
     const start = toIsoLocal(selectedDate);
     const end = toIsoLocal(new Date(selectedDate.getTime() + 30 * 60_000));
     const startDate = parseISO(start);
@@ -709,16 +985,51 @@ export default function StaffPickupsPage() {
     };
 
     if (isCreating) {
+      setCreateModalError("");
+      console.info("[staff-create-appointment] create submit start", {
+        locationId: payload.locationId,
+        startAt: payload.startAt,
+        endAt: payload.endAt,
+        customerEmail: payload.customerEmail,
+        orderCount: createOrders.length,
+        selectedGroupCount: selectedItems.length,
+        prepayOverride,
+        prepayBlocks: createPrepayBlocks.map((x) => ({ orderNbr: x.orderNbr, amountOwed: x.amountOwed })),
+      });
+      if (createOrders.length === 0) {
+        console.warn("[staff-create-appointment] blocked: no orders");
+        setCreateModalError("Add at least one order before creating the appointment.");
+        return;
+      }
+      if (createPrepayBlocks.length > 0 && !prepayOverride) {
+        console.warn("[staff-create-appointment] blocked: prepay override required");
+        setCreateModalError("Payment is required before pickup unless prepay override is enabled.");
+        return;
+      }
+      const selectionPayload = normalizeSelectionsForSave(selectedItems);
+      const createPayload = {
+        ...payload,
+        orderNbrs: createOrders.map((order) => order.orderNbr),
+        selectedItems: selectionPayload,
+        prepayOverride,
+      };
       const res = await fetch("/api/staff/pickups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(createPayload),
+      });
+      const data = await res.json().catch(() => ({}));
+      console.info("[staff-create-appointment] create response", {
+        status: res.status,
+        ok: res.ok,
+        message: data?.message,
+        pickupId: data?.pickup?.id,
       });
       if (res.ok) {
         setDialogOpen(false);
         fetchAppointments();
       } else {
-        setError("Unable to create appointment.");
+        setCreateModalError(data?.message ?? "Unable to create appointment.");
       }
       return;
     }
@@ -755,11 +1066,13 @@ export default function StaffPickupsPage() {
 
   const handleToggleLine = (orderNbr: string, line: StaffOrderLine, checked: boolean) => {
     const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+    const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
     if (!checked) {
       updateSelection(orderNbr, (items) => items.filter((item) => item.lineId !== line.id));
       return;
     }
     if (maxQty <= 0) return;
+    if (!line.isAllocated || allocatedQty <= 0) return;
     const inventoryId = line.inventoryId;
     if (!inventoryId) return;
     updateSelection(orderNbr, (items) => {
@@ -1099,6 +1412,11 @@ export default function StaffPickupsPage() {
             <DialogTitle>{isCreating ? "Create Appointment" : "Edit Appointment"}</DialogTitle>
             <DialogDescription>Update appointment details and orders.</DialogDescription>
           </DialogHeader>
+          {isCreating && createModalError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+              {createModalError}
+            </div>
+          ) : null}
 
           <div className="grid gap-6 md:grid-cols-[1.1fr_1fr]">
             <div className="grid gap-4">
@@ -1249,13 +1567,50 @@ export default function StaffPickupsPage() {
 
               {isCreating ? (
                 <div className="space-y-2">
-                  <Label>Order Numbers (comma separated)</Label>
-                  <Input
-                    value={formData.orderNbrs}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, orderNbrs: event.target.value }))}
-                    placeholder="C12345, C67890"
-                    disabled={isViewer}
-                  />
+                  <Label>Add Order</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={createOrderInput}
+                      onChange={(event) => setCreateOrderInput(event.target.value)}
+                      placeholder="SO12345"
+                      disabled={isViewer || createOrderLoading}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addCreateOrder();
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={addCreateOrder}
+                      disabled={isViewer || createOrderLoading || !createOrderInput.trim()}
+                    >
+                      {createOrderLoading ? "Loading..." : "Add"}
+                    </Button>
+                  </div>
+                  {createOrders.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {createOrders.map((order) => (
+                        <div
+                          key={order.orderNbr}
+                          className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-secondary/20 px-3 py-1 text-xs"
+                        >
+                          <span>{order.orderNbr}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeCreateOrder(order.orderNbr)}
+                            className="text-muted-foreground hover:text-foreground"
+                            disabled={isViewer}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No orders added yet.</p>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -1280,9 +1635,181 @@ export default function StaffPickupsPage() {
               </div>
 
               {isCreating ? (
-                <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
-                  Save the appointment first, then reopen to manage items.
-                </div>
+                createOrders.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                    Add at least one order to load line items.
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    {createPrepayBlocks.length ? (
+                      <div className="rounded-md border border-[#d24f39] bg-[#fdf5f2] p-3 text-xs text-[#b13d2b] space-y-2">
+                        <div className="font-semibold">Payment required before pickup.</div>
+                        {createPrepayBlocks.map((block) => (
+                          <div key={block.orderNbr} className="rounded-md border border-[#f1c3ba] bg-white px-3 py-2">
+                            <div className="font-semibold">Order {block.orderNbr}</div>
+                            <div>Amount owed: ${block.amountOwed.toFixed(2)}</div>
+                            <div>
+                              Contact {formatSalesPersonContact(block.salesPerson)}.
+                            </div>
+                          </div>
+                        ))}
+                        <label className="flex items-start gap-2 text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={prepayOverride}
+                            onChange={(event) => setPrepayOverride(event.target.checked)}
+                            className="mt-0.5"
+                            disabled={isViewer}
+                          />
+                          <span>Prepay override (staff/admin emergency use only)</span>
+                        </label>
+                      </div>
+                    ) : null}
+                    {createOrders.map((order) => {
+                      const orderNbr = order.orderNbr;
+                      const lines = orderLinesByOrder[orderNbr] ?? [];
+                      const selectedMap = selectionsByOrder.get(orderNbr);
+                      const search = (createOrderSearch[orderNbr] ?? "").trim().toLowerCase();
+                      const filteredLines = !search
+                        ? lines
+                        : lines.filter((line) => {
+                            const inv = String(line.inventoryId ?? "").toLowerCase();
+                            const desc = String(line.lineDescription ?? "").toLowerCase();
+                            return inv.includes(search) || desc.includes(search);
+                          });
+                      return (
+                        <div key={orderNbr} className="rounded-md border border-border/60 p-3 space-y-3">
+                          <div className="space-y-1">
+                            <div className="text-sm font-semibold text-foreground">Order {orderNbr}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Terms: {order.payment.terms || "N/A"} | Unpaid balance: ${Number(order.payment.unpaidBalance ?? 0).toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <Input
+                              value={createOrderSearch[orderNbr] ?? ""}
+                              onChange={(event) =>
+                                setCreateOrderSearch((prev) => ({ ...prev, [orderNbr]: event.target.value }))
+                              }
+                              placeholder="Search items"
+                              className="md:max-w-xs"
+                              disabled={isViewer}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCreateSelectAll(orderNbr)}
+                                disabled={isViewer}
+                              >
+                                Select all
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCreateUnselectAll(orderNbr)}
+                                disabled={isViewer}
+                              >
+                                Unselect all
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            {filteredLines.length === 0 ? (
+                              <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                                {lines.length === 0 ? "No items found for this order yet." : "No items match your search."}
+                              </div>
+                            ) : null}
+                            {filteredLines.map((line) => {
+                              const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+                              const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
+                              const selected = selectedMap?.get(line.id);
+                              const key = line.id;
+                              const canSelect =
+                                maxQty > 0 && Boolean(line.inventoryId) && Boolean(line.isAllocated) && allocatedQty > 0;
+                              return (
+                                <div
+                                  key={line.id}
+                                  className={cn(
+                                    "rounded-md border border-border/60 p-2 flex items-start justify-between gap-3",
+                                    selected
+                                      ? "bg-secondary/30"
+                                      : canSelect
+                                        ? "bg-white"
+                                        : "bg-muted/50"
+                                  )}
+                                >
+                                  <label className="flex items-start gap-2">
+                                    <Checkbox
+                                      checked={Boolean(selected)}
+                                      onCheckedChange={(value) =>
+                                        handleToggleLine(orderNbr, line, Boolean(value))
+                                      }
+                                      disabled={isViewer || !canSelect}
+                                    />
+                                    <div>
+                                      <div className="text-sm font-medium text-foreground">
+                                        {line.inventoryId ?? "Item"}
+                                      </div>
+                                      {line.lineDescription ? (
+                                        <div className="text-xs text-muted-foreground">
+                                          {line.lineDescription}
+                                        </div>
+                                      ) : null}
+                                      <div className="text-[11px] text-muted-foreground">
+                                        Open qty: {Number(line.openQty ?? 0)}
+                                      </div>
+                                      {!canSelect ? (
+                                        <div className="text-[11px] font-semibold text-foreground">
+                                          {maxQty <= 0
+                                            ? "Item already picked up"
+                                            : "Item(s) not ready for pick up"}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </label>
+                                  {selected ? (
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        onClick={() => handleAdjustQty(orderNbr, key, -1, maxQty)}
+                                        disabled={isViewer}
+                                      >
+                                        -
+                                      </Button>
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={maxQty}
+                                        value={selected.qty}
+                                        onChange={(event) =>
+                                          handleSetQty(orderNbr, key, Number(event.target.value), maxQty)
+                                        }
+                                        className="h-7 w-16 text-center"
+                                        disabled={isViewer}
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        onClick={() => handleAdjustQty(orderNbr, key, 1, maxQty)}
+                                        disabled={isViewer}
+                                      >
+                                        +
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               ) : itemsLoading ? (
                 <div className="text-sm text-muted-foreground">Loading items...</div>
               ) : itemsError ? (
@@ -1354,15 +1881,20 @@ export default function StaffPickupsPage() {
                         <div className="space-y-2">
                           {lines.map((line) => {
                             const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
+                            const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
                             const selected = selectedMap?.get(line.id);
                             const key = line.id;
-                            const canSelect = maxQty > 0 && Boolean(line.inventoryId);
+                            const canSelect =
+                              maxQty > 0 &&
+                              Boolean(line.inventoryId) &&
+                              Boolean(line.isAllocated) &&
+                              allocatedQty > 0;
                             return (
                               <div
                                 key={line.id}
                                 className={cn(
                                   "rounded-md border border-border/60 p-2 flex items-start justify-between gap-3",
-                                  selected ? "bg-secondary/30" : "bg-background"
+                                  selected ? "bg-secondary/30" : canSelect ? "bg-white" : "bg-muted/50"
                                 )}
                               >
                                 <label className="flex items-start gap-2">
@@ -1385,6 +1917,13 @@ export default function StaffPickupsPage() {
                                     <div className="text-[11px] text-muted-foreground">
                                       Open qty: {Number(line.openQty ?? 0)}
                                     </div>
+                                    {!canSelect ? (
+                                      <div className="text-[11px] font-semibold text-foreground">
+                                        {maxQty <= 0
+                                          ? "Item already picked up"
+                                          : "Item(s) not ready for pick up"}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </label>
                                 {selected ? (
@@ -1432,55 +1971,67 @@ export default function StaffPickupsPage() {
               )}
 
               {shipmentError ? <p className="text-xs text-destructive">{shipmentError}</p> : null}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  Shipment numbers must follow the format SMT#######.
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={saveShipments}
-                  disabled={
-                    isViewer ||
-                    isCreating ||
-                    shipmentSaving ||
-                    (activeAppointment?.status === "Ready" && !shipmentEditing) ||
-                    activeAppointment?.status === "Cancelled" ||
-                    activeAppointment?.status === "Completed" ||
-                    activeAppointment?.status === "NoShow" ||
-                    !shipmentDirty
-                  }
-                >
-                  {shipmentSaving ? "Saving..." : "Save Shipments"}
-                </Button>
-              </div>
+              {!isCreating ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Shipment numbers must follow the format SMT#######.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={saveShipments}
+                      disabled={
+                        isViewer ||
+                        shipmentSaving ||
+                        (activeAppointment?.status === "Ready" && !shipmentEditing) ||
+                        activeAppointment?.status === "Cancelled" ||
+                        activeAppointment?.status === "Completed" ||
+                        activeAppointment?.status === "NoShow" ||
+                        !shipmentDirty
+                      }
+                    >
+                      {shipmentSaving ? "Saving..." : "Save Shipments"}
+                    </Button>
+                  </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  Items are based on the current order list. Save orders first if they changed.
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={handleSaveItems}
-                  disabled={
-                    isViewer ||
-                    isCreating ||
-                    (activeAppointment?.status === "Ready" && !shipmentEditing) ||
-                    activeAppointment?.status === "Cancelled" ||
-                    activeAppointment?.status === "Completed" ||
-                    activeAppointment?.status === "NoShow"
-                  }
-                >
-                  Save Items
-                </Button>
-              </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Items are based on the current order list. Save orders first if they changed.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={handleSaveItems}
+                      disabled={
+                        isViewer ||
+                        (activeAppointment?.status === "Ready" && !shipmentEditing) ||
+                        activeAppointment?.status === "Cancelled" ||
+                        activeAppointment?.status === "Completed" ||
+                        activeAppointment?.status === "NoShow"
+                      }
+                    >
+                      Save Items
+                    </Button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
 
           <DialogFooter className="mt-4">
-            <Button onClick={() => setDialogOpen(false)} className={DESTRUCTIVE_BUTTON}>
+            <Button
+              onClick={() => {
+                setCreateModalError("");
+                setDialogOpen(false);
+              }}
+              className={DESTRUCTIVE_BUTTON}
+            >
               Cancel
             </Button>
-            <Button variant="hero" onClick={handleSaveAppointment} disabled={isViewer}>
+            <Button
+              variant="hero"
+              onClick={handleSaveAppointment}
+              disabled={isViewer || (isCreating && createPrepayBlocks.length > 0 && !prepayOverride)}
+            >
               {isCreating ? "Create Appointment" : "Save Changes"}
             </Button>
           </DialogFooter>
