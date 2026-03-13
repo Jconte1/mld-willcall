@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -82,6 +83,7 @@ function nowMs() {
 
 export default function CustomerAuthCard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [tab, setTab] = React.useState<"login" | "register">("login");
   const [busy, setBusy] = React.useState(false);
@@ -95,6 +97,7 @@ export default function CustomerAuthCard() {
   const [resendPhone, setResendPhone] = React.useState("");
   const [resendSubmitting, setResendSubmitting] = React.useState(false);
   const [showInviteModal, setShowInviteModal] = React.useState(false);
+  const resetSuccess = searchParams.get("reset") === "success";
 
   const [verifyState, setVerifyState] = React.useState<VerifyState>({ status: "idle" });
   const [lockedUntil, setLockedUntil] = React.useState<number>(0);
@@ -518,6 +521,11 @@ export default function CustomerAuthCard() {
           <CardTitle>Customer Access</CardTitle>
         </CardHeader>
         <CardContent>
+          {resetSuccess ? (
+            <p className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              Password updated. Please sign in.
+            </p>
+          ) : null}
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Sign in</TabsTrigger>
@@ -558,6 +566,11 @@ export default function CustomerAuthCard() {
                   <Button type="submit" variant="hero" className="w-full" disabled={busy}>
                     {busy ? "Signing in..." : "Sign in"}
                   </Button>
+                  <div className="text-center">
+                    <Link href="/forgot-password?type=customer" className="text-xs text-muted-foreground underline">
+                      Forgot password
+                    </Link>
+                  </div>
                 </form>
               </Form>
 

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
@@ -839,7 +839,9 @@ const Index: React.FC = () => {
 
       <main className="container py-8 md:py-16">
         {!isCustomer ? (
-          <CustomerAuthCard />
+          <Suspense fallback={<div className="mx-auto w-full max-w-md" />}>
+            <CustomerAuthCard />
+          </Suspense>
         ) : (
           <div className="max-w-6xl mx-auto">
             {/* Hero */}

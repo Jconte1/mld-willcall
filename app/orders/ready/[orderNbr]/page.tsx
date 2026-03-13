@@ -260,7 +260,12 @@ function ReadyContent() {
             <CardContent className="space-y-4 text-sm text-muted-foreground">
               {appointment ? (
                 <div className="rounded-lg border border-[#717463] bg-[#717463] px-4 py-3 text-sm font-medium text-white">
-                  This order already has a pickup appointment scheduled.
+                  <div>This order already has a pickup appointment scheduled.</div>
+                  <div className="mt-1 text-xs text-white/90">
+                    {format(parseISO(appointment.startAt), "EEEE, MMMM d, yyyy")} •{" "}
+                    {format(parseISO(appointment.startAt), "h:mm a")} -{" "}
+                    {format(parseISO(appointment.endAt), "h:mm a")}
+                  </div>
                 </div>
               ) : null}
               <div className="rounded-lg border border-border/60 bg-secondary/30 border-dashed p-4 space-y-3">

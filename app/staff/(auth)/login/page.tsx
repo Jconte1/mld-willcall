@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { z } from "zod";
@@ -37,6 +38,7 @@ function StaffLoginContent() {
     !session?.user?.mustCompleteProfile;
 
   const nextUrl = useMemo(() => params.get("next") || "/staff", [params]);
+  const resetSuccess = params.get("reset") === "success";
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -86,6 +88,11 @@ function StaffLoginContent() {
             <CardContent>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  {resetSuccess ? (
+                    <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                      Password updated. Please sign in.
+                    </p>
+                  ) : null}
                   <FormField
                     control={form.control}
                     name="email"
@@ -116,6 +123,11 @@ function StaffLoginContent() {
                   <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? "Signing in..." : "Sign in"}
                   </Button>
+                  <div className="text-center">
+                    <Link href="/forgot-password?type=staff" className="text-sm text-muted-foreground underline">
+                      Forgot password
+                    </Link>
+                  </div>
                   {showDashboardLink ? (
                     <Button
                       type="button"

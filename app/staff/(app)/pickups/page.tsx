@@ -1293,10 +1293,20 @@ export default function StaffPickupsPage() {
             </Tabs>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+              <Button
+                variant="outline"
+                size="icon"
+                className="bg-white"
+                onClick={() => setSelectedDate(addDays(selectedDate, view === "week" ? -7 : -1))}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="icon" className="bg-white" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+              <Button
+                variant="outline"
+                size="icon"
+                className="bg-white"
+                onClick={() => setSelectedDate(addDays(selectedDate, view === "week" ? 7 : 1))}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
