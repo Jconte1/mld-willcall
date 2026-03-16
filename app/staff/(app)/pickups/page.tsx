@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { pickupLocations } from "@/lib/pickupLocations";
 import { cn } from "@/lib/utils";
 
@@ -120,6 +122,7 @@ const SLOT_HEIGHT_DAY = 72;
 const SHIPMENT_FORMAT = /^SMT\d{7}$/;
 const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
 const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
+const ACTIVE_BLOCKING_STATUSES: AppointmentStatus[] = ["Scheduled", "Confirmed", "InProgress", "Ready"];
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
   Scheduled: "bg-primary/10 text-primary",
@@ -160,6 +163,12 @@ function toIsoLocalFromDateAndTime(dateStr: string, timeStr: string) {
   const parsed = parse(`${dateStr} ${timeStr}`, "MM/dd/yyyy h:mm a", new Date());
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString();
+}
+
+function addMinutesToTimeLabel(timeStr: string, minutes: number) {
+  const parsed = parse(timeStr, "h:mm a", new Date());
+  if (Number.isNaN(parsed.getTime())) return "";
+  return format(new Date(parsed.getTime() + minutes * 60_000), "h:mm a");
 }
 
 function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) {
@@ -229,9 +238,15 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 export default function StaffPickupsPage() {
   const { data: session } = useSession();
   const [shouldOpenNew, setShouldOpenNew] = useState(false);
+  const isSalesperson = session?.user?.role === "SALESPERSON";
   const isViewer = session?.user?.role === "VIEWER";
   const isAdmin = session?.user?.role === "ADMIN";
-  const canCreate = session?.user?.role === "ADMIN" || session?.user?.role === "STAFF";
+  const canEditAppointments = session?.user?.role === "ADMIN" || session?.user?.role === "STAFF";
+  const canUsePrepayOverride = canEditAppointments;
+  const canCreate =
+    session?.user?.role === "ADMIN" ||
+    session?.user?.role === "STAFF" ||
+    session?.user?.role === "SALESPERSON";
   const [view, setView] = useState<"day" | "week">("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [appointments, setAppointments] = useState<StaffPickup[]>([]);
@@ -270,6 +285,7 @@ export default function StaffPickupsPage() {
   const [createOrderError, setCreateOrderError] = useState("");
   const [createModalError, setCreateModalError] = useState("");
   const [createOrders, setCreateOrders] = useState<StaffCreateOrder[]>([]);
+  const [createDayAppointments, setCreateDayAppointments] = useState<StaffPickup[]>([]);
   const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
   const [prepayOverride, setPrepayOverride] = useState(false);
   const [formData, setFormData] = useState({
@@ -319,7 +335,7 @@ export default function StaffPickupsPage() {
   }, [rangeStart, selectedDate, view]);
 
   const accessibleLocations = useMemo(() => {
-    if (session?.user?.role === "ADMIN") {
+    if (session?.user?.role === "ADMIN" || session?.user?.role === "SALESPERSON") {
       return pickupLocations.map((loc) => loc.id);
     }
     const locationAccess = session?.user?.locationAccess ?? [];
@@ -520,17 +536,85 @@ export default function StaffPickupsPage() {
     return options;
   }, []);
 
-  const dateOptions = useMemo(() => {
+  const createStartTimeOptions = useMemo(() => {
     const options: string[] = [];
-    const today = new Date();
-    for (let i = 0; i <= 60; i += 1) {
-      options.push(format(addDays(today, i), "MM/dd/yyyy"));
-    }
-    if (formData.date && !options.includes(formData.date)) {
-      options.unshift(formData.date);
+    for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60 - SLOT_MINUTES; minutes += SLOT_MINUTES) {
+      options.push(minutesToLabel(minutes));
     }
     return options;
-  }, [formData.date]);
+  }, []);
+
+  useEffect(() => {
+    if (!dialogOpen || !isCreating) return;
+    if (!formData.locationId || !formData.date) return;
+    const parsedDate = parse(formData.date, "MM/dd/yyyy", new Date());
+    if (Number.isNaN(parsedDate.getTime())) return;
+    const day = format(parsedDate, "yyyy-MM-dd");
+
+    const load = async () => {
+      const params = new URLSearchParams({
+        from: day,
+        to: day,
+        locationId: formData.locationId,
+      });
+      const res = await fetch(`/api/staff/pickups?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCreateDayAppointments([]);
+        return;
+      }
+      const rows = Array.isArray(data?.pickups) ? (data.pickups as StaffPickup[]) : [];
+      setCreateDayAppointments(rows);
+    };
+
+    void load();
+  }, [dialogOpen, isCreating, formData.locationId, formData.date]);
+
+  const availableCreateStartTimeOptions = useMemo(() => {
+    if (!isCreating) return createStartTimeOptions;
+    const parsedDate = parse(formData.date, "MM/dd/yyyy", new Date());
+    if (Number.isNaN(parsedDate.getTime())) return createStartTimeOptions;
+    const now = new Date();
+    const salespersonMinStart = new Date(now.getTime() + 4 * 60 * 60_000);
+
+    return createStartTimeOptions.filter((option) => {
+      const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
+      if (Number.isNaN(startAt.getTime())) return false;
+      const endAt = new Date(startAt.getTime() + SLOT_MINUTES * 60_000);
+      if (startAt <= now) return false;
+      if (isSalesperson && startAt < salespersonMinStart) return false;
+
+      const blocked = createDayAppointments.some((apt) => {
+        if (!ACTIVE_BLOCKING_STATUSES.includes(apt.status)) return false;
+        if (apt.locationId !== formData.locationId) return false;
+        const aptStart = new Date(apt.startAt);
+        const aptEnd = new Date(apt.endAt);
+        return startAt < aptEnd && endAt > aptStart;
+      });
+
+      return !blocked;
+    });
+  }, [
+    isCreating,
+    createStartTimeOptions,
+    formData.date,
+    formData.locationId,
+    createDayAppointments,
+    isSalesperson,
+  ]);
+
+  useEffect(() => {
+    if (!isCreating || !dialogOpen) return;
+    if (!availableCreateStartTimeOptions.length) return;
+    if (!availableCreateStartTimeOptions.includes(formData.startTime)) {
+      const next = availableCreateStartTimeOptions[0] ?? "";
+      setFormData((prev) => ({
+        ...prev,
+        startTime: next,
+        endTime: addMinutesToTimeLabel(next, SLOT_MINUTES),
+      }));
+    }
+  }, [availableCreateStartTimeOptions, formData.startTime, isCreating, dialogOpen]);
 
   const normalizeOrderNbrs = (value: string) =>
     value
@@ -742,6 +826,7 @@ export default function StaffPickupsPage() {
   };
 
   const handleOpenEdit = (appointment: StaffPickup) => {
+    if (!canEditAppointments) return;
     setActiveAppointment(appointment);
     setIsCreating(false);
     setShipmentEditing(appointment.status !== "Ready");
@@ -944,11 +1029,14 @@ export default function StaffPickupsPage() {
     setCreateOrderError("");
     setCreateModalError("");
     setCreateOrders([]);
+    setCreateDayAppointments([]);
     setPrepayOverride(false);
     const start = toIsoLocal(selectedDate);
-    const end = toIsoLocal(new Date(selectedDate.getTime() + 30 * 60_000));
     const startDate = parseISO(start);
-    const endDate = parseISO(end);
+    const suggestedStartTime = format(startDate, "h:mm a");
+    const defaultStartTime = createStartTimeOptions.includes(suggestedStartTime)
+      ? suggestedStartTime
+      : createStartTimeOptions[0] ?? "7:00 AM";
     setFormData({
       locationId: selectedLocations[0] ?? "",
       customerEmail: "",
@@ -956,8 +1044,8 @@ export default function StaffPickupsPage() {
       customerLastName: "",
       customerPhone: "",
       date: format(startDate, "MM/dd/yyyy"),
-      startTime: format(startDate, "h:mm a"),
-      endTime: format(endDate, "h:mm a"),
+      startTime: defaultStartTime,
+      endTime: addMinutesToTimeLabel(defaultStartTime, SLOT_MINUTES),
       status: "Scheduled",
       orderNbrs: "",
     });
@@ -965,12 +1053,13 @@ export default function StaffPickupsPage() {
   };
 
   const handleSaveAppointment = async () => {
-    if (isViewer) {
+    if (isViewer || (!isCreating && !canEditAppointments)) {
       setError("Viewer access is read-only.");
       return;
     }
     const startAt = toIsoLocalFromDateAndTime(formData.date, formData.startTime);
-    const endAt = toIsoLocalFromDateAndTime(formData.date, formData.endTime);
+    const computedEndTime = isCreating ? addMinutesToTimeLabel(formData.startTime, SLOT_MINUTES) : formData.endTime;
+    const endAt = toIsoLocalFromDateAndTime(formData.date, computedEndTime);
     const orderNbrs = normalizeOrderNbrs(formData.orderNbrs);
     const payload = {
       locationId: formData.locationId,
@@ -980,7 +1069,7 @@ export default function StaffPickupsPage() {
       customerPhone: formData.customerPhone || undefined,
       startAt,
       endAt,
-      status: formData.status,
+      status: isCreating && isSalesperson ? "Scheduled" : formData.status,
       orderNbrs,
     };
 
@@ -993,7 +1082,7 @@ export default function StaffPickupsPage() {
         customerEmail: payload.customerEmail,
         orderCount: createOrders.length,
         selectedGroupCount: selectedItems.length,
-        prepayOverride,
+        prepayOverride: canUsePrepayOverride && prepayOverride,
         prepayBlocks: createPrepayBlocks.map((x) => ({ orderNbr: x.orderNbr, amountOwed: x.amountOwed })),
       });
       if (createOrders.length === 0) {
@@ -1001,7 +1090,8 @@ export default function StaffPickupsPage() {
         setCreateModalError("Add at least one order before creating the appointment.");
         return;
       }
-      if (createPrepayBlocks.length > 0 && !prepayOverride) {
+      const effectivePrepayOverride = canUsePrepayOverride && prepayOverride;
+      if (createPrepayBlocks.length > 0 && !effectivePrepayOverride) {
         console.warn("[staff-create-appointment] blocked: prepay override required");
         setCreateModalError("Payment is required before pickup unless prepay override is enabled.");
         return;
@@ -1011,7 +1101,7 @@ export default function StaffPickupsPage() {
         ...payload,
         orderNbrs: createOrders.map((order) => order.orderNbr),
         selectedItems: selectionPayload,
-        prepayOverride,
+        prepayOverride: effectivePrepayOverride,
       };
       const res = await fetch("/api/staff/pickups", {
         method: "POST",
@@ -1120,7 +1210,7 @@ export default function StaffPickupsPage() {
   };
 
   const handleSaveItems = async () => {
-    if (isViewer || !activeAppointment) return;
+    if (isViewer || !canEditAppointments || !activeAppointment) return;
     const payload = normalizeSelectionsForSave(selectedItems);
     setPendingItemsSave(payload);
     setNotifyItemsCustomer(true);
@@ -1148,7 +1238,7 @@ export default function StaffPickupsPage() {
   };
 
   const handleDragDrop = async (event: React.DragEvent<HTMLDivElement>, day: Date) => {
-    if (isViewer) return;
+    if (isViewer || !canEditAppointments) return;
     event.preventDefault();
     const appointmentId = event.dataTransfer.getData("text/plain");
     const appointment = appointments.find((apt) => apt.id === appointmentId);
@@ -1208,11 +1298,13 @@ export default function StaffPickupsPage() {
           return (
             <div
               key={apt.id}
-              draggable={!isViewer}
+              draggable={!isViewer && canEditAppointments}
               onDragStart={
-                isViewer ? undefined : (event) => event.dataTransfer.setData("text/plain", apt.id)
+                isViewer || !canEditAppointments
+                  ? undefined
+                  : (event) => event.dataTransfer.setData("text/plain", apt.id)
               }
-              onClick={() => handleOpenEdit(apt)}
+              onClick={canEditAppointments ? () => handleOpenEdit(apt) : undefined}
               className={cn(
                 "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden",
                 isCompact ? "p-1" : "p-2",
@@ -1459,13 +1551,13 @@ export default function StaffPickupsPage() {
                   <Select
                     value={formData.status}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
-                    disabled={isViewer}
+                    disabled={isViewer || (isCreating && isSalesperson)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.keys(STATUS_STYLES).map((status) => (
+                      {(isCreating && isSalesperson ? ["Scheduled"] : Object.keys(STATUS_STYLES)).map((status) => (
                         <SelectItem key={status} value={status}>
                           {status}
                         </SelectItem>
@@ -1519,19 +1611,30 @@ export default function StaffPickupsPage() {
 
               <div className="space-y-2">
                 <Label>Date</Label>
-                <Input
-                  list="pickup-date-options"
-                  value={formData.date}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, date: event.target.value }))}
-                  placeholder="MM/DD/YYYY"
-                  disabled={isViewer}
-                />
-                <datalist id="pickup-date-options">
-                  {dateOptions.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
-                <p className="text-xs text-muted-foreground">MM/DD/YYYY</p>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      disabled={isViewer}
+                    >
+                      {formData.date || "Select date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={formData.date ? parse(formData.date, "MM/dd/yyyy", new Date()) : undefined}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        setFormData((prev) => ({ ...prev, date: format(date, "MM/dd/yyyy") }));
+                      }}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1546,33 +1649,46 @@ export default function StaffPickupsPage() {
                       <SelectValue placeholder="Select start time" />
                     </SelectTrigger>
                     <SelectContent>
-                      {timeOptions.map((option) => (
+                      {(isCreating ? availableCreateStartTimeOptions : timeOptions).map((option) => (
                         <SelectItem key={option} value={option}>
                           {option}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {isCreating && availableCreateStartTimeOptions.length === 0 ? (
+                    <p className="text-xs text-destructive">
+                      No available start times for this date/location.
+                    </p>
+                  ) : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>End Time</Label>
-                  <Select
-                    value={formData.endTime}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
-                    disabled={isViewer}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select end time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timeOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {isCreating ? (
+                  <div className="space-y-2">
+                    <Label>End Time</Label>
+                    <Input value={addMinutesToTimeLabel(formData.startTime, SLOT_MINUTES)} disabled />
+                    <p className="text-xs text-muted-foreground">Appointment duration is fixed at 15 minutes.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>End Time</Label>
+                    <Select
+                      value={formData.endTime}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
+                      disabled={isViewer}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select end time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timeOptions.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               {isCreating ? (
@@ -1663,16 +1779,18 @@ export default function StaffPickupsPage() {
                             </div>
                           </div>
                         ))}
-                        <label className="flex items-start gap-2 text-foreground">
-                          <input
-                            type="checkbox"
-                            checked={prepayOverride}
-                            onChange={(event) => setPrepayOverride(event.target.checked)}
-                            className="mt-0.5"
-                            disabled={isViewer}
-                          />
-                          <span>Prepay override (staff/admin emergency use only)</span>
-                        </label>
+                        {canUsePrepayOverride ? (
+                          <label className="flex items-start gap-2 text-foreground">
+                            <input
+                              type="checkbox"
+                              checked={prepayOverride}
+                              onChange={(event) => setPrepayOverride(event.target.checked)}
+                              className="mt-0.5"
+                              disabled={isViewer}
+                            />
+                            <span>Prepay override (staff/admin emergency use only)</span>
+                          </label>
+                        ) : null}
                       </div>
                     ) : null}
                     {createOrders.map((order) => {
@@ -2040,7 +2158,12 @@ export default function StaffPickupsPage() {
             <Button
               variant="hero"
               onClick={handleSaveAppointment}
-              disabled={isViewer || (isCreating && createPrepayBlocks.length > 0 && !prepayOverride)}
+              disabled={
+                isViewer ||
+                (!isCreating && !canEditAppointments) ||
+                (isCreating && availableCreateStartTimeOptions.length === 0) ||
+                (isCreating && createPrepayBlocks.length > 0 && !(canUsePrepayOverride && prepayOverride))
+              }
             >
               {isCreating ? "Create Appointment" : "Save Changes"}
             </Button>

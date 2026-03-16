@@ -173,7 +173,9 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 >
                   Invite a customer
                 </Button>
-                {session.user.role === "ADMIN" || session.user.role === "STAFF" ? (
+                {session.user.role === "ADMIN" ||
+                session.user.role === "STAFF" ||
+                session.user.role === "SALESPERSON" ? (
                   <Button
                     variant="outline"
                     className="bg-white"
