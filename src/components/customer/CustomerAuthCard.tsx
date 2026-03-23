@@ -644,7 +644,7 @@ export default function CustomerAuthCard() {
                       <FormItem>
                         <FormLabel>Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Your name" autoComplete="name" {...field} />
+                          <Input placeholder="Full Name" autoComplete="name" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -658,7 +658,7 @@ export default function CustomerAuthCard() {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input placeholder="you@example.com" autoComplete="email" {...field} />
+                          <Input placeholder="Email Address" autoComplete="email" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -716,7 +716,7 @@ export default function CustomerAuthCard() {
                             <FormLabel>Customer ID#</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="Enter your Customer ID#"
+                                placeholder="Customer ID#"
                                 autoComplete="off"
                                 {...field}
                                 onChange={(e) => {
@@ -740,7 +740,7 @@ export default function CustomerAuthCard() {
                             <FormLabel>Billing ZIP code</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="84043"
+                                placeholder="Billing ZIP Code"
                                 inputMode="numeric"
                                 autoComplete="postal-code"
                                 maxLength={5}
@@ -775,7 +775,7 @@ export default function CustomerAuthCard() {
                         <FormLabel>Invite Code</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Enter your invite code"
+                            placeholder="Invite Code"
                             autoComplete="off"
                             maxLength={12}
                             {...field}
@@ -823,7 +823,7 @@ export default function CustomerAuthCard() {
                             registerForm.setValue("baid", event.target.value);
                             if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
                           }}
-                          placeholder="BA1234567"
+                          placeholder="Customer ID#"
                           autoComplete="off"
                         />
                       </div>
@@ -836,7 +836,7 @@ export default function CustomerAuthCard() {
                             registerForm.setValue("zip", next);
                             if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
                           }}
-                          placeholder="84043"
+                          placeholder="Billing ZIP Code"
                           inputMode="numeric"
                           autoComplete="postal-code"
                           maxLength={5}

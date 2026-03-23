@@ -16,11 +16,18 @@ const schema = z.object({
   salespersonNumber: z
     .string()
     .min(3, "Salesperson number is required")
-    .max(5, "Salesperson number must be 3–5 digits")
+    .max(5, "Salesperson number must be 3-5 digits")
     .regex(/^\d+$/, "Salesperson number must be digits only"),
   salespersonName: z.string().min(1, "Name is required"),
-  salespersonPhone: z.string().optional(),
-  salespersonEmail: z.string().email("Enter a valid email").optional().or(z.literal("")),
+  salespersonPhone: z
+    .string()
+    .min(1, "Phone is required")
+    .refine((value) => value.replace(/\D/g, "").length === 10, "Enter a valid 10-digit phone"),
+  salespersonEmail: z
+    .string()
+    .min(1, "Email is required")
+    .email("Enter a valid email")
+    .refine((value) => value.toLowerCase().endsWith("@mld.com"), "Email must be @mld.com"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -94,8 +101,8 @@ export default function SalespersonProfilePage() {
         body: JSON.stringify({
           salespersonNumber: values.salespersonNumber.trim(),
           salespersonName: values.salespersonName.trim(),
-          salespersonPhone: values.salespersonPhone?.replace(/\D/g, "") || null,
-          salespersonEmail: values.salespersonEmail?.trim() || null,
+          salespersonPhone: values.salespersonPhone.replace(/\D/g, ""),
+          salespersonEmail: values.salespersonEmail.trim().toLowerCase(),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -156,7 +163,7 @@ export default function SalespersonProfilePage() {
                     <FormItem>
                       <FormLabel>Salesperson number</FormLabel>
                       <FormControl>
-                        <Input {...field} inputMode="numeric" placeholder="1250" disabled={loading} />
+                        <Input {...field} inputMode="numeric" placeholder="Salesperson Number" disabled={loading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -168,9 +175,9 @@ export default function SalespersonProfilePage() {
                   name="salespersonName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Name</FormLabel>
+                      <FormLabel>Salesperson name</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="Jane Doe" disabled={loading} />
+                        <Input {...field} placeholder="Salesperson Name" disabled={loading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -182,11 +189,11 @@ export default function SalespersonProfilePage() {
                   name="salespersonPhone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone (optional)</FormLabel>
+                      <FormLabel>Salesperson phone</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="(801) 555-5555"
+                          placeholder="Salesperson Phone"
                           inputMode="tel"
                           disabled={loading}
                           onChange={(event) => field.onChange(formatPhoneInput(event.target.value))}
@@ -202,9 +209,9 @@ export default function SalespersonProfilePage() {
                   name="salespersonEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email (optional)</FormLabel>
+                      <FormLabel>Salesperson email</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="name@mld.com" disabled={loading} />
+                        <Input {...field} placeholder="Salesperson Email" disabled={loading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
