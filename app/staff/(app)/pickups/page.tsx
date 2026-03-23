@@ -335,7 +335,7 @@ export default function StaffPickupsPage() {
   }, [rangeStart, selectedDate, view]);
 
   const accessibleLocations = useMemo(() => {
-    if (session?.user?.role === "ADMIN" || session?.user?.role === "SALESPERSON") {
+    if (session?.user?.role === "ADMIN") {
       return pickupLocations.map((loc) => loc.id);
     }
     const locationAccess = session?.user?.locationAccess ?? [];

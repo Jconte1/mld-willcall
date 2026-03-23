@@ -120,14 +120,14 @@ function StaffLoginContent() {
                     )}
                   />
 
-                  <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
+                  <Button
+                    type="submit"
+                    variant="hero"
+                    className="w-full"
+                    disabled={isSubmitting || showDashboardLink}
+                  >
                     {isSubmitting ? "Signing in..." : "Sign in"}
                   </Button>
-                  <div className="text-center">
-                    <Link href="/forgot-password?type=staff" className="text-sm text-muted-foreground underline">
-                      Forgot password
-                    </Link>
-                  </div>
                   {showDashboardLink ? (
                     <Button
                       type="button"
@@ -143,6 +143,11 @@ function StaffLoginContent() {
                       Go to dashboard
                     </Button>
                   ) : null}
+                  <div className="text-center">
+                    <Link href="/forgot-password?type=staff" className="text-sm text-muted-foreground underline">
+                      Forgot password
+                    </Link>
+                  </div>
                 </form>
               </Form>
             </CardContent>
