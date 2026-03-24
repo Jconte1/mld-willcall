@@ -259,7 +259,7 @@ export default function StaffPickupsPage() {
   const [activeAppointment, setActiveAppointment] = useState<StaffPickup | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
-  const [notifyCustomer, setNotifyCustomer] = useState(true);
+  const [notifyCustomer, setNotifyCustomer] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState("");
@@ -327,7 +327,7 @@ export default function StaffPickupsPage() {
     return ((END_HOUR - START_HOUR) * 60) / SLOT_MINUTES * slotHeight;
   }, [slotHeight]);
 
-  const timeLabelOffset = slotHeight * 0.5;
+  const timeLabelOffset = 0;
 
   const visibleDays = useMemo(() => {
     if (view === "day") return [selectedDate];
@@ -1144,7 +1144,7 @@ export default function StaffPickupsPage() {
         orderNbrs,
         status: formData.status,
       });
-      setNotifyCustomer(true);
+      setNotifyCustomer(false);
       setCancelReason("");
       setDialogOpen(false);
       setNotifyDialogOpen(true);
@@ -1267,7 +1267,7 @@ export default function StaffPickupsPage() {
         orderNbrs: appointment.orders.map((o) => o.orderNbr),
         status: appointment.status,
       });
-      setNotifyCustomer(true);
+      setNotifyCustomer(false);
       setCancelReason("");
       setNotifyDialogOpen(true);
       return;
@@ -2208,6 +2208,7 @@ export default function StaffPickupsPage() {
               onClick={() => {
                 setNotifyDialogOpen(false);
                 setPendingUpdate(null);
+                setNotifyCustomer(false);
                 setCancelReason("");
               }}
               className={DESTRUCTIVE_BUTTON}
