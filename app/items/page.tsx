@@ -41,6 +41,7 @@ type ItemRow = SelectedItem & {
 };
 type OrderGroup = {
   orderNbr: string;
+  orderType: string | null;
   items: ItemRow[];
   expanded: boolean;
   payment: {
@@ -61,6 +62,10 @@ type OrderGroup = {
 const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
 const MIN_DEPOSIT_RATIO = 0.47;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const DESTRUCTIVE_BUTTON =
+  "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
+const CONTINUE_BUTTON =
+  "bg-[#5f6456] text-white hover:bg-[#555a4d] hover:-translate-y-[1px] transition-transform";
 const formatPhone = (value?: string | null) => {
   if (!value) return null;
   const digits = value.replace(/\D/g, "");
@@ -89,6 +94,7 @@ const formatSalespersonContact = (salesPerson?: {
 type PublicOrderReadyResponse = {
   orderReady: {
     orderNbr: string;
+    orderType?: string | null;
     salesPerson?: {
       number: string;
       name: string | null;
@@ -126,6 +132,9 @@ const ItemSelectionPage: React.FC = () => {
   const [error, setError] = useState("");
   const [orderGroups, setOrderGroups] = useState<OrderGroup[]>([]);
   const [creditHoldOpen, setCreditHoldOpen] = useState(false);
+  const [returnAckOpen, setReturnAckOpen] = useState(false);
+  const [returnAckChecked, setReturnAckChecked] = useState(false);
+  const [pendingSelections, setPendingSelections] = useState<OrderItemSelection[] | null>(null);
   const orderReadyToken = formData.orderReadyToken;
   const usePublicFlow = Boolean(orderReadyToken);
   const lockSelection = usePublicFlow;
@@ -209,6 +218,11 @@ const ItemSelectionPage: React.FC = () => {
         const salesPerson = usePublicFlow
           ? publicPayload?.orderReady?.salesPerson ?? null
           : data?.summary?.salesPerson ?? null;
+        const orderTypeRaw = (
+          usePublicFlow
+            ? publicPayload?.orderReady?.orderType
+            : data?.summary?.erpOrderType ?? data?.summary?.orderType
+        ) ?? null;
         const pickedUpValueRaw = lines.reduce((sum: number, line: any) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
           if (orderQty <= 0) return sum;
@@ -269,6 +283,7 @@ const ItemSelectionPage: React.FC = () => {
             terms,
             status,
           },
+          orderType: orderTypeRaw,
           pickedUpValue,
           salesPerson,
         };
@@ -279,6 +294,7 @@ const ItemSelectionPage: React.FC = () => {
         setOrderGroups(
           results.map((result, index) => ({
             orderNbr: result.orderNbr,
+            orderType: result.orderType,
             items: result.items,
             expanded: index === 0,
             payment: result.payment,
@@ -326,6 +342,7 @@ const ItemSelectionPage: React.FC = () => {
       .map((group) => {
         const terms = (group.payment.terms ?? "").trim().toUpperCase();
         if (!PREPAY_TERMS.has(terms)) return null;
+        if ((group.orderType ?? "").trim().toUpperCase() === "R1") return null;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
         const remainingGoodsPreTaxRaw = group.items.reduce((sum, item) => {
           const orderQty = item.orderQty ?? 0;
@@ -370,6 +387,11 @@ const ItemSelectionPage: React.FC = () => {
       } | null;
     }>;
   }, [orderGroups]);
+
+  const hasR1Order = useMemo(
+    () => orderGroups.some((group) => (group.orderType ?? "").trim().toUpperCase() === "R1"),
+    [orderGroups]
+  );
 
   const handleToggleOrder = (orderNbr: string) => {
     setOrderGroups((prev) =>
@@ -483,6 +505,13 @@ const ItemSelectionPage: React.FC = () => {
           })),
       }))
       .filter((group) => group.items.length > 0);
+
+    if (hasR1Order) {
+      setPendingSelections(selections);
+      setReturnAckChecked(false);
+      setReturnAckOpen(true);
+      return;
+    }
 
     updateFormData({ selectedItems: selections });
     router.push("/schedule");
@@ -746,6 +775,65 @@ const ItemSelectionPage: React.FC = () => {
           <DialogFooter className="mt-4">
             <Button variant="ghost" onClick={() => setCreditHoldOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={returnAckOpen}
+        onOpenChange={(open) => {
+          setReturnAckOpen(open);
+          if (!open) {
+            setReturnAckChecked(false);
+            setPendingSelections(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Return Acknowledgement</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={returnAckChecked}
+                onChange={(event) => setReturnAckChecked(event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                I acknowledge that original product must be returned before my appointment or at the
+                time of my appointment before my replacement product can be given to me.
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              onClick={() => {
+                setReturnAckOpen(false);
+                setReturnAckChecked(false);
+                setPendingSelections(null);
+              }}
+              className={DESTRUCTIVE_BUTTON}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingSelections || !returnAckChecked) return;
+                updateFormData({ selectedItems: pendingSelections });
+                setReturnAckOpen(false);
+                setReturnAckChecked(false);
+                setPendingSelections(null);
+                router.push("/schedule");
+              }}
+              className={CONTINUE_BUTTON}
+              disabled={!returnAckChecked}
+            >
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>
