@@ -5,8 +5,8 @@ export type PickupLocation = Location;
 const SALT_LAKE_HQ_WAREHOUSES = new Set([
   "SALT LAKE APPLIANCES",
   "SALT LAKE HARDWARE",
-  "SALT LAKE INSTALL",
   "SALT LAKE PLUMBING",
+  "SALT LAKE INSTALL",
 ]);
 
 const SALT_LAKE_OUTLET_WAREHOUSES = new Set([
@@ -16,10 +16,13 @@ const SALT_LAKE_OUTLET_WAREHOUSES = new Set([
 ]);
 
 const BOISE_WAREHOUSES = new Set([
-  "BOISE PROJECT",
   "BOISE SHOWROOM",
   "BOISE WAREHOUSE",
 ]);
+
+const JACKSON_WAREHOUSES = new Set(["JACKSON SHOWROOM"]);
+
+const PROVO_WAREHOUSES = new Set(["PROVO SHOWROOM"]);
 
 export const pickupLocations: PickupLocation[] = [
   {
@@ -38,6 +41,18 @@ export const pickupLocations: PickupLocation[] = [
     id: "boise-willcall",
     name: "BOISE WILL CALL",
     address: "627 N. Dupont Ave. Boise, ID 83713",
+    instructions: "Check in at the front desk when you arrive. Our team will assist you with loading.",
+  },
+  {
+    id: "jackson-willcall",
+    name: "JACKSON WILL CALL",
+    address: "TBD",
+    instructions: "Check in at the front desk when you arrive. Our team will assist you with loading.",
+  },
+  {
+    id: "provo-willcall",
+    name: "PROVO WILL CALL",
+    address: "TBD",
     instructions: "Check in at the front desk when you arrive. Our team will assist you with loading.",
   },
 ];
@@ -59,6 +74,14 @@ export function resolvePickupLocationIds(warehouses: string[]) {
     }
     if (BOISE_WAREHOUSES.has(key)) {
       ids.add("boise-willcall");
+      continue;
+    }
+    if (JACKSON_WAREHOUSES.has(key)) {
+      ids.add("jackson-willcall");
+      continue;
+    }
+    if (PROVO_WAREHOUSES.has(key)) {
+      ids.add("provo-willcall");
       continue;
     }
     unknown.push(key);

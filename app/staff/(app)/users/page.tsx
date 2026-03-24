@@ -30,7 +30,13 @@ type StaffUserRow = {
   salespersonEmail?: string | null;
 };
 
-const LOCATION_IDS = ["slc-hq", "slc-outlet", "boise-willcall"] as const;
+const LOCATION_IDS = [
+  "slc-hq",
+  "slc-outlet",
+  "boise-willcall",
+  "jackson-willcall",
+  "provo-willcall",
+] as const;
 type LocationId = (typeof LOCATION_IDS)[number];
 const LOCATION_SET = new Set<LocationId>(LOCATION_IDS);
 const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
