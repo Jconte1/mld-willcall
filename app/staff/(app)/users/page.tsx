@@ -349,7 +349,7 @@ export default function StaffUsersPage() {
         </div>
       </CardContent>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Create Staff User</DialogTitle>
           </DialogHeader>
@@ -456,7 +456,7 @@ export default function StaffUsersPage() {
         }
         setEditOpen(open);
       }}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Edit Staff User</DialogTitle>
           </DialogHeader>
