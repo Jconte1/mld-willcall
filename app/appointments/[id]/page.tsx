@@ -205,6 +205,7 @@ function AppointmentContent() {
 
   const isCancelled = appointment.status === "Cancelled";
   const isCompleted = appointment.status === "Completed";
+  const isNoShow = appointment.status === "NoShow";
 
   return (
     <div className="min-h-screen bg-background">
@@ -341,7 +342,7 @@ function AppointmentContent() {
                   >
                     {rescheduleOpen ? "Close Reschedule" : "Reschedule"}
                   </Button>
-                  {!isCancelled ? (
+                  {!isCancelled && !isNoShow ? (
                     <Button
                       className="bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform"
                       onClick={handleCancel}
