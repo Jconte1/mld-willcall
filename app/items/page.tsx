@@ -225,11 +225,22 @@ const ItemSelectionPage: React.FC = () => {
             .startsWith("R1")
             ? "R1"
             : null;
-        const orderTypeRaw = (
+        const sourceOrderTypeRaw = (
           usePublicFlow
             ? publicPayload?.orderReady?.orderType
             : data?.summary?.erpOrderType ?? data?.summary?.orderType
-        ) ?? inferredOrderType;
+        ) ?? null;
+        const sourceOrderType =
+          typeof sourceOrderTypeRaw === "string" && sourceOrderTypeRaw.trim().length > 0
+            ? sourceOrderTypeRaw.trim()
+            : null;
+        // Dashboard -> /items can return stale/missing/misaligned orderType.
+        // If order number prefix is R1, force R1 classification.
+        const orderTypeRaw = inferredOrderType === "R1" ? "R1" : sourceOrderType;
+        const normalizedOrderType = String(orderTypeRaw ?? "")
+          .trim()
+          .toUpperCase();
+        const qualifiesR1 = normalizedOrderType === "R1";
         const pickedUpValueRaw = lines.reduce((sum: number, line: any) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
           if (orderQty <= 0) return sum;

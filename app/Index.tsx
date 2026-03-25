@@ -1035,13 +1035,18 @@ const Index: React.FC = () => {
                                   />
                                   <div className="flex-1 space-y-2">
                                     <div className="flex items-start justify-between gap-2">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="font-semibold text-foreground">
-                                          {order.orderNbr}
-                                        </span>
-                                        {!isPickupReady ? (
-                                          <Badge variant="destructive">Not Ready</Badge>
-                                        ) : null}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-semibold text-foreground">
+                                        {order.orderNbr}
+                                      </span>
+                                      {String(order.orderNbr || "").trim().toUpperCase().startsWith("R1") ? (
+                                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">
+                                          Replacement
+                                        </Badge>
+                                      ) : null}
+                                      {!isPickupReady ? (
+                                        <Badge variant="destructive">Not Ready</Badge>
+                                      ) : null}
                                         {order.paymentStatus ? (
                                           <Badge variant="outline">{order.paymentStatus}</Badge>
                                         ) : null}
