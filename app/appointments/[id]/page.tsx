@@ -60,7 +60,6 @@ function AppointmentContent() {
   const [error, setError] = useState("");
   const [appointment, setAppointment] = useState<AppointmentResponse["appointment"] | null>(null);
   const [orderLines, setOrderLines] = useState<AppointmentOrderLines[]>([]);
-  const [nextLink, setNextLink] = useState<string | null>(null);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [availability, setAvailability] = useState<DayAvailability[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -168,7 +167,6 @@ function AppointmentContent() {
     }
     setAppointment(data.appointment ?? null);
     setRescheduleOpen(false);
-    if (data.link) setNextLink(data.link);
     toast({ title: "Appointment rescheduled" });
   };
 
@@ -359,11 +357,6 @@ function AppointmentContent() {
                 </div>
               ) : null}
 
-              {nextLink ? (
-                <div className="text-xs text-muted-foreground">
-                  Manage link: {nextLink}
-                </div>
-              ) : null}
             </CardContent>
           </Card>
 

@@ -218,11 +218,18 @@ const ItemSelectionPage: React.FC = () => {
         const salesPerson = usePublicFlow
           ? publicPayload?.orderReady?.salesPerson ?? null
           : data?.summary?.salesPerson ?? null;
+        const inferredOrderType =
+          String(orderNbr || "")
+            .trim()
+            .toUpperCase()
+            .startsWith("R1")
+            ? "R1"
+            : null;
         const orderTypeRaw = (
           usePublicFlow
             ? publicPayload?.orderReady?.orderType
             : data?.summary?.erpOrderType ?? data?.summary?.orderType
-        ) ?? null;
+        ) ?? inferredOrderType;
         const pickedUpValueRaw = lines.reduce((sum: number, line: any) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
           if (orderQty <= 0) return sum;

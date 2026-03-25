@@ -1071,7 +1071,7 @@ const Index: React.FC = () => {
                                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                                       <span>Type: {order.orderType}</span>
                                       <span>Status: {order.status}</span>
-                                      <span>Delivery: {dateLabel}</span>
+                                      <span>Requested Date: {dateLabel}</span>
                                       <span>Pickup: {locationLabel}</span>
                                     </div>
                                     {isScheduled && order.appointment ? (
