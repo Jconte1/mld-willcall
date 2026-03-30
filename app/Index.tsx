@@ -11,7 +11,6 @@ import {
   Mail,
   ClipboardList,
   UserPlus,
-  UserMinus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -1178,67 +1177,73 @@ const Index: React.FC = () => {
                       ) : membersLoading ? (
                         <p className="text-sm text-muted-foreground">Loading members...</p>
                       ) : (
-                        <div className="rounded-xl border border-border/60 bg-background/80">
-                          <div className="hidden grid-cols-[1.2fr_1.2fr_0.8fr_0.8fr_0.8fr] items-center gap-3 border-b border-border/60 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-                            <span>Name</span>
-                            <span>Email</span>
-                            <span>Role</span>
-                            <span>Edit</span>
-                            <span>Remove</span>
-                          </div>
-                          {filteredMembers.length === 0 ? (
-                            <div className="px-4 py-6 text-sm text-muted-foreground">No members found.</div>
-                          ) : (
-                            <div className="divide-y divide-border/60">
-                              {filteredMembers.map((member) => (
-                                <div
-                                  key={member.userId}
-                                  className="grid grid-cols-1 gap-3 px-4 py-3 text-sm md:grid-cols-[1.2fr_1.2fr_0.8fr_0.8fr_0.8fr] md:items-center"
-                                >
-                                  <div className="font-medium text-foreground">{member.name}</div>
-                                  <div className="text-muted-foreground">{member.email}</div>
-                                  <div>
-                                    <Badge variant="outline">{roleLabel(member.role)}</Badge>
-                                  </div>
-                                  <div>
-                                    {isAdmin ? (
-                                      <Select
-                                        value={member.role}
-                                        onValueChange={(value) =>
-                                          handleUpdateMemberRole(member.userId, value as "ADMIN" | "PM")
-                                        }
-                                      >
-                                        <SelectTrigger className="h-9 w-[130px]">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="ADMIN">Admin</SelectItem>
-                                          <SelectItem value="PM">Manager</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    ) : (
-                                      <span className="text-muted-foreground">-</span>
-                                    )}
-                                  </div>
-                                  <div>
-                                    {isAdmin && member.userId !== user?.id ? (
-                                      <Button
-                                        size="sm"
-                                        className={DESTRUCTIVE_BUTTON}
-                                        onClick={() => handleRemoveMember(member.userId)}
-                                        disabled={memberActionId === member.userId}
-                                      >
-                                        <UserMinus className="h-4 w-4 mr-1" />
-                                        Remove
-                                      </Button>
-                                    ) : (
-                                      <span className="text-muted-foreground">-</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        <div className="overflow-x-auto border rounded-lg">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40">
+                              <tr className="text-left">
+                                <th className="p-3">Name</th>
+                                <th className="p-3">Email</th>
+                                <th className="p-3">Role</th>
+                                <th className="p-3">Edit</th>
+                                <th className="p-3">Remove</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredMembers.length === 0 ? (
+                                <tr>
+                                  <td className="p-6 text-muted-foreground" colSpan={5}>
+                                    No members found.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredMembers.map((member) => (
+                                  <tr key={member.userId} className="border-t">
+                                    <td className="p-3 font-medium">{member.name}</td>
+                                    <td className="p-3">{member.email}</td>
+                                    <td className="p-3">
+                                      <Badge variant={member.role === "ADMIN" ? "default" : "secondary"}>
+                                        {member.role}
+                                      </Badge>
+                                    </td>
+                                    <td className="p-3">
+                                      {isAdmin ? (
+                                        <Select
+                                          value={member.role}
+                                          onValueChange={(value) =>
+                                            handleUpdateMemberRole(member.userId, value as "ADMIN" | "PM")
+                                          }
+                                        >
+                                          <SelectTrigger className="w-[140px]">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="ADMIN">Admin</SelectItem>
+                                            <SelectItem value="PM">Manager</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <span className="text-muted-foreground">-</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3">
+                                      {isAdmin && member.userId !== user?.id ? (
+                                        <Button
+                                          size="sm"
+                                          className={DESTRUCTIVE_BUTTON}
+                                          onClick={() => handleRemoveMember(member.userId)}
+                                          disabled={memberActionId === member.userId}
+                                        >
+                                          {memberActionId === member.userId ? "Deleting..." : "Delete"}
+                                        </Button>
+                                      ) : (
+                                        <span className="text-muted-foreground">-</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </CardContent>
