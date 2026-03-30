@@ -91,16 +91,6 @@ type InviteRow = {
   usedAt: string | null;
 };
 
-type RequestRow = {
-  id: string;
-  createdAt: string;
-  baid: string | null;
-  ip: string | null;
-  userAgent: string | null;
-  result: string;
-  reason: string | null;
-};
-
 const ORDER_PREVIEW_LIMIT = 5;
 const DESTRUCTIVE_BUTTON =
   "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
@@ -139,7 +129,7 @@ const Index: React.FC = () => {
   const [syncProgress, setSyncProgress] = useState(0);
 
   const [dashboardTab, setDashboardTab] = useState<
-    "orders" | "members" | "invitations" | "requests"
+    "orders" | "members" | "invitations"
   >("orders");
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -150,10 +140,6 @@ const Index: React.FC = () => {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [invitesError, setInvitesError] = useState("");
   const [inviteQuery, setInviteQuery] = useState("");
-
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [requestsLoading, setRequestsLoading] = useState(false);
-  const [requestsError, setRequestsError] = useState("");
 
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
@@ -633,29 +619,6 @@ const Index: React.FC = () => {
     }
   };
 
-  const fetchRequests = async () => {
-    if (!isCustomer || !user?.id || !effectiveBaid || !isAdmin) return;
-    setRequestsLoading(true);
-    setRequestsError("");
-    try {
-      const res = await fetch("/api/customer/invites/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setRequestsError(data?.message ?? "Unable to load requests.");
-        return;
-      }
-      setRequests(Array.isArray(data?.requests) ? data.requests : []);
-    } catch {
-      setRequestsError("Unable to load requests.");
-    } finally {
-      setRequestsLoading(false);
-    }
-  };
-
   const handleInviteSubmit = async () => {
     if (!isAdmin || !user?.id || !effectiveBaid) return;
     const payload = {
@@ -788,12 +751,6 @@ const Index: React.FC = () => {
     }
   }, [dashboardTab, effectiveBaid]);
 
-  useEffect(() => {
-    if (dashboardTab === "requests" && isAdmin) {
-      fetchRequests();
-    }
-  }, [dashboardTab, effectiveBaid, isAdmin]);
-
   const filteredMembers = useMemo(() => {
     const needle = memberQuery.trim().toLowerCase();
     if (!needle) return members;
@@ -808,8 +765,9 @@ const Index: React.FC = () => {
 
   const filteredInvites = useMemo(() => {
     const needle = inviteQuery.trim().toLowerCase();
-    if (!needle) return invites;
-    return invites.filter((invite) => {
+    const pendingInvites = invites.filter((invite) => invite.status === "Pending");
+    if (!needle) return pendingInvites;
+    return pendingInvites.filter((invite) => {
       const hay = [invite.recipientEmail, invite.status, roleLabel(invite.role)]
         .filter(Boolean)
         .join(" ")
@@ -819,15 +777,12 @@ const Index: React.FC = () => {
   }, [invites, inviteQuery]);
 
   const dashboardTabs = useMemo(() => {
-    const items: { id: "orders" | "members" | "invitations" | "requests"; label: string; icon: any }[] = [
+    const items: { id: "orders" | "members" | "invitations"; label: string; icon: any }[] = [
       { id: "orders", label: "Orders", icon: ClipboardList },
       { id: "members", label: "Members", icon: Users },
     ];
     if (isAdmin) {
       items.push({ id: "invitations", label: "Invitations", icon: Mail });
-    }
-    if (isAdmin) {
-      items.push({ id: "requests", label: "Requests", icon: ClipboardList });
     }
     return items;
   }, [isAdmin]);
@@ -1223,48 +1178,67 @@ const Index: React.FC = () => {
                       ) : membersLoading ? (
                         <p className="text-sm text-muted-foreground">Loading members...</p>
                       ) : (
-                        <div className="space-y-2">
-                          {filteredMembers.map((member) => (
-                            <div
-                              key={member.userId}
-                              className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 md:flex-row md:items-center md:justify-between"
-                            >
-                              <div>
-                                <p className="font-medium text-foreground">{member.name}</p>
-                                <p className="text-xs text-muted-foreground">{member.email}</p>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline">{roleLabel(member.role)}</Badge>
-                                {isAdmin ? (
-                                  <Select
-                                    value={member.role}
-                                    onValueChange={(value) =>
-                                      handleUpdateMemberRole(member.userId, value as "ADMIN" | "PM")
-                                    }
-                                  >
-                                    <SelectTrigger className="w-[140px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="ADMIN">Admin</SelectItem>
-                                      <SelectItem value="PM">Manager</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                ) : null}
-                                {isAdmin && member.userId !== user?.id ? (
-                                  <Button
-                                    size="sm"
-                                    className={DESTRUCTIVE_BUTTON}
-                                    onClick={() => handleRemoveMember(member.userId)}
-                                    disabled={memberActionId === member.userId}
-                                  >
-                                    <UserMinus className="h-4 w-4 mr-1" />
-                                    Remove
-                                  </Button>
-                                ) : null}
-                              </div>
+                        <div className="rounded-xl border border-border/60 bg-background/80">
+                          <div className="hidden grid-cols-[1.2fr_1.2fr_0.8fr_0.8fr_0.8fr] items-center gap-3 border-b border-border/60 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                            <span>Name</span>
+                            <span>Email</span>
+                            <span>Role</span>
+                            <span>Edit</span>
+                            <span>Remove</span>
+                          </div>
+                          {filteredMembers.length === 0 ? (
+                            <div className="px-4 py-6 text-sm text-muted-foreground">No members found.</div>
+                          ) : (
+                            <div className="divide-y divide-border/60">
+                              {filteredMembers.map((member) => (
+                                <div
+                                  key={member.userId}
+                                  className="grid grid-cols-1 gap-3 px-4 py-3 text-sm md:grid-cols-[1.2fr_1.2fr_0.8fr_0.8fr_0.8fr] md:items-center"
+                                >
+                                  <div className="font-medium text-foreground">{member.name}</div>
+                                  <div className="text-muted-foreground">{member.email}</div>
+                                  <div>
+                                    <Badge variant="outline">{roleLabel(member.role)}</Badge>
+                                  </div>
+                                  <div>
+                                    {isAdmin ? (
+                                      <Select
+                                        value={member.role}
+                                        onValueChange={(value) =>
+                                          handleUpdateMemberRole(member.userId, value as "ADMIN" | "PM")
+                                        }
+                                      >
+                                        <SelectTrigger className="h-9 w-[130px]">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="ADMIN">Admin</SelectItem>
+                                          <SelectItem value="PM">Manager</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    {isAdmin && member.userId !== user?.id ? (
+                                      <Button
+                                        size="sm"
+                                        className={DESTRUCTIVE_BUTTON}
+                                        onClick={() => handleRemoveMember(member.userId)}
+                                        disabled={memberActionId === member.userId}
+                                      >
+                                        <UserMinus className="h-4 w-4 mr-1" />
+                                        Remove
+                                      </Button>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -1277,7 +1251,7 @@ const Index: React.FC = () => {
                       <div>
                         <CardTitle>Invitations</CardTitle>
                         <p className="text-sm text-muted-foreground">
-                          Track invite codes sent to new users.
+                          Track pending invite codes sent to new users.
                         </p>
                       </div>
                       {isAdmin ? (
@@ -1297,6 +1271,8 @@ const Index: React.FC = () => {
                         <p className="text-sm text-destructive">{invitesError}</p>
                       ) : invitesLoading ? (
                         <p className="text-sm text-muted-foreground">Loading invites...</p>
+                      ) : filteredInvites.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No pending invites.</p>
                       ) : (
                         <div className="space-y-2">
                           {filteredInvites.map((invite) => (
@@ -1343,44 +1319,6 @@ const Index: React.FC = () => {
                   </Card>
                 ) : null}
 
-                {dashboardTab === "requests" && isAdmin ? (
-                  <Card className="border-border/60">
-                    <CardHeader>
-                      <CardTitle>Requests</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        Recent invite requests and verification attempts.
-                      </p>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {requestsError ? (
-                        <p className="text-sm text-destructive">{requestsError}</p>
-                      ) : requestsLoading ? (
-                        <p className="text-sm text-muted-foreground">Loading requests...</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {requests.map((req) => (
-                            <div
-                              key={req.id}
-                              className="rounded-lg border border-border/60 bg-background/80 p-3 text-sm"
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-foreground">
-                                  {req.baid || "Unknown Customer ID#"}
-                                </span>
-                                <Badge variant={req.result === "success" ? "default" : "outline"}>
-                                  {req.result}
-                                </Badge>
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {req.reason || "No reason"} - {new Date(req.createdAt).toLocaleString()}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ) : null}
               </div>
             </div>
           </div>
