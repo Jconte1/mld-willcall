@@ -67,7 +67,10 @@ export const authOptions: NextAuthOptions = {
             body: JSON.stringify({ email, password }),
           });
 
-          if (!res.ok) return null;
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data?.message || "Invalid credentials");
+          }
           const data = await res.json().catch(() => ({}));
           const user = (data?.user ?? data) as StaffUser;
           const token = data?.token as string | undefined;
@@ -88,7 +91,10 @@ export const authOptions: NextAuthOptions = {
             body: JSON.stringify({ email, password }),
           });
 
-          if (!res.ok) return null;
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data?.message || "Invalid credentials");
+          }
           const data = await res.json().catch(() => ({}));
           const user = (data?.user ?? data) as CustomerUser;
 

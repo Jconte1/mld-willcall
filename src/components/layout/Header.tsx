@@ -16,7 +16,9 @@ const Header: React.FC = () => {
   const staffActive = isStaffRoute && !isStaffLogin;
   const staffHref = isStaffLogin ? "/" : "/staff";
   const staffLabel = isStaffLogin ? "Customer" : "Staff";
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const hideStaffNavForCustomer =
+    status === "authenticated" && session?.user?.type === "customer";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-card/80 backdrop-blur-lg">
@@ -43,18 +45,20 @@ const Header: React.FC = () => {
               <span className="hidden sm:inline">Schedule</span>
             </Link>
 
-            <Link
-              href={staffHref}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                staffActive
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-              )}
-            >
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">{staffLabel}</span>
-            </Link>
+            {!hideStaffNavForCustomer ? (
+              <Link
+                href={staffHref}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                  staffActive
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                )}
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">{staffLabel}</span>
+              </Link>
+            ) : null}
           </nav>
           {status === "authenticated" ? (
             <button

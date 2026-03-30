@@ -176,7 +176,7 @@ export default function CustomerAuthCard() {
       });
 
       if (res?.error) {
-        toast({ title: "Login failed", description: "Invalid email or password." });
+        toast({ title: "Login failed", description: res.error });
         return;
       }
 
