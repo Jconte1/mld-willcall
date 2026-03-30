@@ -222,7 +222,7 @@ function ReadyContent() {
       <FullPageSyncLoader
         progress={syncProgress}
         title="Loading order details"
-        helperText="Please keep this window open while we load your order."
+        helperText="Please leave this window open while we load your order. This can sometimes take up to 1 or 2 minutes during peak hours."
       />
     );
   }

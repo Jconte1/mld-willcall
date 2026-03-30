@@ -20,7 +20,7 @@ function getStatus(progress: number) {
 export default function FullPageSyncLoader({
   progress,
   title = "Syncing your account",
-  helperText = "Please keep this window open while we pull your orders and details.",
+  helperText = "Please leave this window open while we pull your orders and details. This can sometimes take up to 1 or 2 minutes during peak hours.",
 }: Props) {
   const status = getStatus(progress);
   const pct = Math.max(0, Math.min(100, Math.round(progress)));
