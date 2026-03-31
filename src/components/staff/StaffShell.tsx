@@ -195,7 +195,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 <Button
                   variant="outline"
                   className="bg-white"
-                  onClick={() => signOut({ callbackUrl: "/staff/login" })}
+                  onClick={() => signOut({ callbackUrl: "/willcall/staff/login" })}
                 >
                   Sign out
                 </Button>

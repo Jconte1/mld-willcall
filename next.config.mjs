@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  basePath: "/willcall",
+  assetPrefix: "/willcall",
   webpack(config) {
     // Allow `import url from './file.svg'` to behave like Vite.
     config.module.rules.push({

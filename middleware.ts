@@ -6,16 +6,19 @@ import { getToken } from "next-auth/jwt";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const hasBasePath = pathname.startsWith("/willcall/");
+  const routePath = hasBasePath ? pathname.slice("/willcall".length) : pathname;
+  const pathPrefix = hasBasePath ? "/willcall" : "";
 
-  if (!pathname.startsWith("/staff")) {
+  if (!routePath.startsWith("/staff")) {
     return NextResponse.next();
   }
 
   // Public staff routes
-  const isLogin = pathname === "/staff/login";
-  const isLogout = pathname === "/staff/logout";
-  const isChangePassword = pathname === "/staff/change-password";
-  const isForbidden = pathname === "/staff/forbidden";
+  const isLogin = routePath === "/staff/login";
+  const isLogout = routePath === "/staff/logout";
+  const isChangePassword = routePath === "/staff/change-password";
+  const isForbidden = routePath === "/staff/forbidden";
 
   if (isLogin) {
     return NextResponse.next();
@@ -25,23 +28,23 @@ export async function middleware(req: NextRequest) {
 
   if (!token) {
     const url = req.nextUrl.clone();
-    url.pathname = "/staff/login";
-    url.searchParams.set("next", pathname);
+    url.pathname = `${pathPrefix}/staff/login`;
+    url.searchParams.set("next", routePath);
     return NextResponse.redirect(url);
   }
 
   // Force password change before allowing anything else.
   if ((token as any).mustChangePassword && !isChangePassword && !isLogout) {
     const url = req.nextUrl.clone();
-    url.pathname = "/staff/change-password";
+    url.pathname = `${pathPrefix}/staff/change-password`;
     return NextResponse.redirect(url);
   }
 
   // Admin-only routes.
-  if (pathname.startsWith("/staff/users") && (token as any).role !== "ADMIN") {
+  if (routePath.startsWith("/staff/users") && (token as any).role !== "ADMIN") {
     if (isForbidden) return NextResponse.next();
     const url = req.nextUrl.clone();
-    url.pathname = "/staff/forbidden";
+    url.pathname = `${pathPrefix}/staff/forbidden`;
     return NextResponse.rewrite(url, { status: 403 });
   }
 
@@ -49,5 +52,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/staff/:path*"],
+  matcher: ["/staff/:path*", "/willcall/staff/:path*"],
 };
