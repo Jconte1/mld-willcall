@@ -61,10 +61,6 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
   }, [status, session, pathname, router]);
 
   const visibleNav = navItems.filter((item) => !item.adminOnly || userRole === "ADMIN");
-  // TODO(launch-gate): Temporary pre-launch restriction for SALESPERSON users.
-  // Re-enable by setting this to false (or removing usages) once feature go-live is approved.
-  const salespersonActionsTemporarilyDisabled = session?.user?.role === "SALESPERSON";
-
   const handleResendInvite = async () => {
     const customerId = inviteCustomerId.trim().toUpperCase();
     const zip = inviteZip.replace(/\D/g, "").slice(0, 5);
@@ -172,14 +168,6 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 <Button
                   variant="outline"
                   className="bg-white"
-                  // TODO(launch-gate): Remove this disable gate when salespeople are allowed
-                  // to send invites directly from the staff shell.
-                  disabled={salespersonActionsTemporarilyDisabled}
-                  title={
-                    salespersonActionsTemporarilyDisabled
-                      ? "Temporarily disabled for salespeople"
-                      : undefined
-                  }
                   onClick={() => setShowInviteDialog(true)}
                 >
                   Invite a customer
@@ -190,18 +178,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                   <Button
                     variant="outline"
                     className="bg-white"
-                    // TODO(launch-gate): Remove this disable gate when salespeople are allowed
-                    // to create appointments from the staff shell.
-                    disabled={salespersonActionsTemporarilyDisabled}
-                    title={
-                      salespersonActionsTemporarilyDisabled
-                        ? "Temporarily disabled for salespeople"
-                        : undefined
-                    }
                     onClick={() => {
-                      // TODO(launch-gate): Remove this guard with the disabled prop above.
-                      // Keeping both avoids accidental activation via keyboard/script.
-                      if (salespersonActionsTemporarilyDisabled) return;
                       if (typeof window !== "undefined") {
                         window.sessionStorage.setItem("staff_pickups_open_new", "1");
                         if (pathname.startsWith("/staff/pickups")) {

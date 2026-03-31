@@ -398,31 +398,6 @@ const Index: React.FC = () => {
     };
   }, [selectedOrderDetails]);
 
-  useEffect(() => {
-  if (selectedOrders.length === 0) return;
-
-  // Only log when the UI would block/complain.
-    if (selectedLocationState.hasUnknown) {
-      console.groupCollapsed(
-        `[pickup debug] selectedOrders=${selectedOrders.length} ` +
-        `locationIds=${selectedLocationState.locationIds.join(",") || "(none)"} ` +
-        `hasUnknown=${selectedLocationState.hasUnknown}`
-      );
-
-    for (const order of selectedOrderDetails) {
-      const res = resolvePickupLocationIds(order.warehouses);
-      console.log({
-        orderNbr: order.orderNbr,
-        warehouses: order.warehouses,
-        resolvedLocationIds: res.locationIds,
-        unknownWarehouses: res.unknownWarehouses,
-      });
-    }
-
-    console.groupEnd();
-  }
-}, [selectedOrders, selectedOrderDetails, selectedLocationState]);
-
   const handleContinue = () => {
     if (!selectedOrders.length) {
       setError("Select at least one order to schedule a pickup");

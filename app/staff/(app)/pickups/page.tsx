@@ -1551,13 +1551,13 @@ export default function StaffPickupsPage() {
                   <Select
                     value={formData.status}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value as AppointmentStatus }))}
-                    disabled={isViewer || (isCreating && isSalesperson)}
+                    disabled={isViewer || isCreating}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(isCreating && isSalesperson ? ["Scheduled"] : Object.keys(STATUS_STYLES)).map((status) => (
+                      {(isCreating ? ["Scheduled"] : Object.keys(STATUS_STYLES)).map((status) => (
                         <SelectItem key={status} value={status}>
                           {status}
                         </SelectItem>
