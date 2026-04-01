@@ -107,6 +107,18 @@ type StaffOrderSelection = {
   items: StaffSelectedItem[];
 };
 
+type DayAvailabilitySlot = {
+  startTime: string;
+  available: boolean;
+};
+
+type DayAvailabilityResponse = {
+  availability?: Array<{
+    date: string;
+    slots: DayAvailabilitySlot[];
+  }>;
+};
+
 type LayoutItem = StaffPickup & {
   column: number;
   columnCount: number;
@@ -169,6 +181,12 @@ function addMinutesToTimeLabel(timeStr: string, minutes: number) {
   const parsed = parse(timeStr, "h:mm a", new Date());
   if (Number.isNaN(parsed.getTime())) return "";
   return format(new Date(parsed.getTime() + minutes * 60_000), "h:mm a");
+}
+
+function hhmmToLabel(value: string) {
+  const [hh, mm] = value.split(":").map((part) => Number(part));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "";
+  return minutesToLabel(hh * 60 + mm);
 }
 
 function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) {
@@ -286,6 +304,7 @@ export default function StaffPickupsPage() {
   const [createModalError, setCreateModalError] = useState("");
   const [createOrders, setCreateOrders] = useState<StaffCreateOrder[]>([]);
   const [createDayAppointments, setCreateDayAppointments] = useState<StaffPickup[]>([]);
+  const [salespersonAvailableStartTimes, setSalespersonAvailableStartTimes] = useState<string[] | null>(null);
   const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
   const [prepayOverride, setPrepayOverride] = useState(false);
   const [returnAckOpen, setReturnAckOpen] = useState(false);
@@ -555,11 +574,27 @@ export default function StaffPickupsPage() {
     const day = format(parsedDate, "yyyy-MM-dd");
 
     const load = async () => {
+      setSalespersonAvailableStartTimes(null);
       const params = new URLSearchParams({
         from: day,
         to: day,
         locationId: formData.locationId,
       });
+      if (isSalesperson) {
+        const availabilityRes = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
+        const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
+        if (availabilityRes.ok) {
+          const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
+          const options = (dayRow?.slots ?? [])
+            .filter((slot) => slot.available)
+            .map((slot) => hhmmToLabel(slot.startTime))
+            .filter(Boolean);
+          setSalespersonAvailableStartTimes(options);
+        } else {
+          setSalespersonAvailableStartTimes([]);
+        }
+      }
+
       const res = await fetch(`/api/staff/pickups?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -571,10 +606,11 @@ export default function StaffPickupsPage() {
     };
 
     void load();
-  }, [dialogOpen, isCreating, formData.locationId, formData.date]);
+  }, [dialogOpen, isCreating, formData.locationId, formData.date, isSalesperson]);
 
   const availableCreateStartTimeOptions = useMemo(() => {
     if (!isCreating) return createStartTimeOptions;
+    if (isSalesperson) return salespersonAvailableStartTimes ?? [];
     const parsedDate = parse(formData.date, "MM/dd/yyyy", new Date());
     if (Number.isNaN(parsedDate.getTime())) return createStartTimeOptions;
     const now = new Date();
@@ -604,6 +640,7 @@ export default function StaffPickupsPage() {
     formData.locationId,
     createDayAppointments,
     isSalesperson,
+    salespersonAvailableStartTimes,
   ]);
 
   useEffect(() => {
