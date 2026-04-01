@@ -351,7 +351,8 @@ export default function StaffHomePage() {
 
   const handleToggleLine = (orderNbr: string, line: AppointmentOrderLine, checked: boolean) => {
     const key = itemKey(line.id, line.inventoryId);
-    if (!key || !line.inventoryId) return;
+    const inventoryId = line.inventoryId;
+    if (!key || !inventoryId) return;
     const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
     const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
     const canSelect = maxQty > 0 && Boolean(line.isAllocated) && allocatedQty > 0;
@@ -368,7 +369,7 @@ export default function StaffHomePage() {
             {
               orderNbr,
               lineId: line.id,
-              inventoryId: line.inventoryId,
+              inventoryId,
               qtySelected: Math.min(1, maxQty),
             },
           ],
