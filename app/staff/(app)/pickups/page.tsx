@@ -288,6 +288,9 @@ export default function StaffPickupsPage() {
   const [createDayAppointments, setCreateDayAppointments] = useState<StaffPickup[]>([]);
   const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
   const [prepayOverride, setPrepayOverride] = useState(false);
+  const [returnAckOpen, setReturnAckOpen] = useState(false);
+  const [returnAckChecked, setReturnAckChecked] = useState(false);
+  const [pendingCreatePayload, setPendingCreatePayload] = useState<Record<string, unknown> | null>(null);
   const [formData, setFormData] = useState({
     locationId: "",
     customerEmail: "",
@@ -679,6 +682,7 @@ export default function StaffPickupsPage() {
     if (!isCreating) return [];
     return createOrders
       .map((order) => {
+        if (String(order.orderNbr || "").trim().toUpperCase().startsWith("R1")) return null;
         const terms = (order.payment.terms ?? "").trim().toUpperCase();
         if (!PREPAY_TERMS.has(terms)) return null;
         const lines = orderLinesByOrder[order.orderNbr] ?? [];
@@ -713,6 +717,32 @@ export default function StaffPickupsPage() {
       salesPerson: StaffCreateOrder["salesPerson"] | null;
     }>;
   }, [createOrders, isCreating, orderLinesByOrder, selectionsByOrder]);
+
+  const hasR1CreateOrder = useMemo(
+    () => createOrders.some((order) => String(order.orderNbr || "").trim().toUpperCase().startsWith("R1")),
+    [createOrders]
+  );
+
+  const submitCreateAppointment = async (createPayload: Record<string, unknown>) => {
+    const res = await fetch("/api/staff/pickups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(createPayload),
+    });
+    const data = await res.json().catch(() => ({}));
+    console.info("[staff-create-appointment] create response", {
+      status: res.status,
+      ok: res.ok,
+      message: data?.message,
+      pickupId: data?.pickup?.id,
+    });
+    if (res.ok) {
+      setDialogOpen(false);
+      fetchAppointments();
+    } else {
+      setCreateModalError(data?.message ?? "Unable to create appointment.");
+    }
+  };
 
   const shipmentDirty = useMemo(() => {
     const keys = new Set([...Object.keys(shipmentDrafts), ...Object.keys(shipmentOriginals)]);
@@ -1103,24 +1133,13 @@ export default function StaffPickupsPage() {
         selectedItems: selectionPayload,
         prepayOverride: effectivePrepayOverride,
       };
-      const res = await fetch("/api/staff/pickups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createPayload),
-      });
-      const data = await res.json().catch(() => ({}));
-      console.info("[staff-create-appointment] create response", {
-        status: res.status,
-        ok: res.ok,
-        message: data?.message,
-        pickupId: data?.pickup?.id,
-      });
-      if (res.ok) {
-        setDialogOpen(false);
-        fetchAppointments();
-      } else {
-        setCreateModalError(data?.message ?? "Unable to create appointment.");
+      if (hasR1CreateOrder) {
+        setPendingCreatePayload(createPayload);
+        setReturnAckChecked(false);
+        setReturnAckOpen(true);
+        return;
       }
+      await submitCreateAppointment(createPayload);
       return;
     }
 
@@ -1949,12 +1968,13 @@ export default function StaffPickupsPage() {
                     const lines = orderLinesByOrder[orderNbr] ?? [];
                     const selectedMap = selectionsByOrder.get(orderNbr);
                     const shipments = shipmentDrafts[orderNbr] ?? [];
-                    const isLocked =
+                    const isShipmentLocked =
                       isViewer ||
                       (activeAppointment?.status === "Ready" && !shipmentEditing) ||
                       activeAppointment?.status === "Cancelled" ||
                       activeAppointment?.status === "Completed" ||
                       activeAppointment?.status === "NoShow";
+                    const isItemsLocked = isViewer;
 
                     return (
                       <div key={orderNbr} className="rounded-md border border-border/60 p-3 space-y-3">
@@ -1978,12 +1998,12 @@ export default function StaffPickupsPage() {
                                         }
                                         placeholder="SMT0123456"
                                         className={cn(!isValid && "border-destructive")}
-                                        disabled={isLocked}
+                                        disabled={isShipmentLocked}
                                       />
                                       <Button
                                         size="sm"
                                         onClick={() => removeShipment(orderNbr, idx)}
-                                        disabled={isLocked}
+                                        disabled={isShipmentLocked}
                                         className={DESTRUCTIVE_BUTTON}
                                       >
                                         Remove
@@ -1998,7 +2018,7 @@ export default function StaffPickupsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => addShipment(orderNbr)}
-                                disabled={isLocked}
+                                disabled={isShipmentLocked}
                               >
                                 + Add shipment
                               </Button>
@@ -2031,7 +2051,7 @@ export default function StaffPickupsPage() {
                                     onCheckedChange={(value) =>
                                       handleToggleLine(orderNbr, line, Boolean(value))
                                     }
-                                    disabled={isLocked || !canSelect}
+                                    disabled={isItemsLocked || !canSelect}
                                   />
                                   <div>
                                     <div className="text-sm font-medium text-foreground">
@@ -2061,7 +2081,7 @@ export default function StaffPickupsPage() {
                                       size="sm"
                                       className="h-7 px-2"
                                       onClick={() => handleAdjustQty(orderNbr, key, -1, maxQty)}
-                                      disabled={isLocked}
+                                      disabled={isItemsLocked}
                                     >
                                       -
                                     </Button>
@@ -2074,14 +2094,14 @@ export default function StaffPickupsPage() {
                                         handleSetQty(orderNbr, key, Number(event.target.value), maxQty)
                                       }
                                       className="h-7 w-16 text-center"
-                                      disabled={isLocked}
+                                      disabled={isItemsLocked}
                                     />
                                     <Button
                                       variant="outline"
                                       size="sm"
                                       className="h-7 px-2"
                                       onClick={() => handleAdjustQty(orderNbr, key, 1, maxQty)}
-                                      disabled={isLocked}
+                                      disabled={isItemsLocked}
                                     >
                                       +
                                     </Button>
@@ -2129,13 +2149,7 @@ export default function StaffPickupsPage() {
                     <Button
                       variant="outline"
                       onClick={handleSaveItems}
-                      disabled={
-                        isViewer ||
-                        (activeAppointment?.status === "Ready" && !shipmentEditing) ||
-                        activeAppointment?.status === "Cancelled" ||
-                        activeAppointment?.status === "Completed" ||
-                        activeAppointment?.status === "NoShow"
-                      }
+                      disabled={isViewer}
                     >
                       Save Items
                     </Button>
@@ -2149,6 +2163,9 @@ export default function StaffPickupsPage() {
             <Button
               onClick={() => {
                 setCreateModalError("");
+                setReturnAckOpen(false);
+                setReturnAckChecked(false);
+                setPendingCreatePayload(null);
                 setDialogOpen(false);
               }}
               className={DESTRUCTIVE_BUTTON}
@@ -2166,6 +2183,64 @@ export default function StaffPickupsPage() {
               }
             >
               {isCreating ? "Create Appointment" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={returnAckOpen}
+        onOpenChange={(open) => {
+          setReturnAckOpen(open);
+          if (!open) {
+            setReturnAckChecked(false);
+            setPendingCreatePayload(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Return Acknowledgement</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={returnAckChecked}
+                onChange={(event) => setReturnAckChecked(event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                I acknowledge that original product must be returned before my appointment or at the
+                time of my appointment before my replacement product can be given to me.
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              onClick={() => {
+                setReturnAckOpen(false);
+                setReturnAckChecked(false);
+                setPendingCreatePayload(null);
+              }}
+              className={DESTRUCTIVE_BUTTON}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              disabled={!returnAckChecked}
+              onClick={async () => {
+                if (!pendingCreatePayload || !returnAckChecked) return;
+                setReturnAckOpen(false);
+                await submitCreateAppointment(pendingCreatePayload);
+                setReturnAckChecked(false);
+                setPendingCreatePayload(null);
+              }}
+            >
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>
