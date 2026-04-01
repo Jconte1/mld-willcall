@@ -81,7 +81,6 @@ export default function StaffHomePage() {
   const [itemsOrderNbr, setItemsOrderNbr] = useState<string | null>(null);
   const [itemsAppointmentId, setItemsAppointmentId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, AppointmentLine[]>>({});
-  const [itemsInitialKeysByOrder, setItemsInitialKeysByOrder] = useState<Record<string, string[]>>({});
   const [itemsOrderLinesByOrder, setItemsOrderLinesByOrder] = useState<
     Record<string, AppointmentOrderLine[]>
   >({});
@@ -277,7 +276,6 @@ export default function StaffHomePage() {
     setItemsAppointmentId(appointment.id);
     setItemsOrderNbr(orderNbr);
     setItemsByOrder({});
-    setItemsInitialKeysByOrder({});
     setItemsOrderLinesByOrder({});
     const res = await fetch(`/api/staff/pickups/${appointment.id}/items`);
     const data = await res.json().catch(() => ({}));
@@ -301,12 +299,6 @@ export default function StaffHomePage() {
       map.set(line.orderNbr, list);
       return map;
     }, new Map<string, AppointmentLine[]>());
-    const initialKeys = Object.fromEntries(
-      Array.from(grouped.entries()).map(([order, rows]) => [
-        order,
-        rows.map((row) => itemKey(row.lineId, row.inventoryId)).filter(Boolean),
-      ])
-    );
     const orderLines: AppointmentOrderLine[] = Array.isArray(data?.orderLines) ? data.orderLines : [];
     const groupedOrderLines = orderLines.reduce((map, line) => {
       const list = map.get(line.orderNbr) ?? [];
@@ -315,7 +307,6 @@ export default function StaffHomePage() {
       return map;
     }, new Map<string, AppointmentOrderLine[]>());
     setItemsByOrder(Object.fromEntries(grouped));
-    setItemsInitialKeysByOrder(initialKeys);
     setItemsOrderLinesByOrder(Object.fromEntries(groupedOrderLines));
     setItemsLoading(false);
   };
@@ -348,42 +339,6 @@ export default function StaffHomePage() {
   };
 
   const itemKey = (lineId: string | null, inventoryId: string | null) => lineId ?? inventoryId ?? "";
-
-  const handleToggleLine = (orderNbr: string, line: AppointmentOrderLine, checked: boolean) => {
-    const key = itemKey(line.id, line.inventoryId);
-    const inventoryId = line.inventoryId;
-    if (!key || !inventoryId) return;
-    const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
-    const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
-    const canSelect = maxQty > 0 && Boolean(line.isAllocated) && allocatedQty > 0;
-    if (!canSelect) return;
-
-    setItemsByOrder((prev) => {
-      const current = prev[orderNbr] ?? [];
-      const exists = current.some((row) => itemKey(row.lineId, row.inventoryId) === key);
-      if (checked && !exists) {
-        return {
-          ...prev,
-          [orderNbr]: [
-            ...current,
-            {
-              orderNbr,
-              lineId: line.id,
-              inventoryId,
-              qtySelected: Math.min(1, maxQty),
-            },
-          ],
-        };
-      }
-      if (!checked && exists) {
-        return {
-          ...prev,
-          [orderNbr]: current.filter((row) => itemKey(row.lineId, row.inventoryId) !== key),
-        };
-      }
-      return prev;
-    });
-  };
 
   const handleAdjustQty = (
     orderNbr: string,
@@ -785,115 +740,81 @@ export default function StaffHomePage() {
               <p className="text-sm text-destructive">{itemsError}</p>
             ) : (
               <div className="space-y-4">
-                {itemsOrderNbr && itemsOrderLinesByOrder[itemsOrderNbr]?.length ? (
+                {itemsOrderNbr && (itemsByOrder[itemsOrderNbr]?.length ?? 0) > 0 ? (
                   <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                    {itemsOrderLinesByOrder[itemsOrderNbr].map((line) => {
-                      const key = itemKey(line.id, line.inventoryId);
-                      const selected = (itemsByOrder[itemsOrderNbr] ?? []).find(
-                        (row) => itemKey(row.lineId, row.inventoryId) === key
+                    {(itemsByOrder[itemsOrderNbr] ?? []).map((selected) => {
+                      const key = itemKey(selected.lineId, selected.inventoryId);
+                      const matched = (itemsOrderLinesByOrder[itemsOrderNbr] ?? []).find(
+                        (line) => itemKey(line.id, line.inventoryId) === key
                       );
-                      const wasInitiallySelected = (itemsInitialKeysByOrder[itemsOrderNbr] ?? []).includes(key);
-                      const pendingRemoval = wasInitiallySelected && !selected;
-                      const maxQty = Math.max(0, Math.floor(Number(line.openQty ?? 0)));
-                      const allocatedQty = Math.max(0, Math.floor(Number(line.allocatedQty ?? 0)));
-                      const canSelect =
-                        maxQty > 0 &&
-                        Boolean(line.inventoryId) &&
-                        Boolean(line.isAllocated) &&
-                        allocatedQty > 0;
+                      const line: AppointmentOrderLine = matched ?? {
+                        id: selected.lineId ?? selected.inventoryId,
+                        orderNbr: selected.orderNbr,
+                        inventoryId: selected.inventoryId,
+                        lineDescription: null,
+                        openQty: selected.qtySelected,
+                        allocatedQty: selected.qtySelected,
+                        isAllocated: true,
+                      };
+                      const maxQty = Math.max(
+                        selected.qtySelected,
+                        Math.floor(Number(line.openQty ?? selected.qtySelected))
+                      );
                       return (
-                        <div
-                          key={line.id}
-                          className={cn(
-                            "rounded-md border border-border/60 p-2",
-                            pendingRemoval && "bg-rose-50/60"
-                          )}
-                        >
+                        <div key={line.id} className="rounded-md border border-border/60 p-2">
                           <label className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-2">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(selected)}
-                                onChange={(event) =>
-                                  handleToggleLine(itemsOrderNbr, line, event.target.checked)
-                                }
-                                disabled={isViewer || !canSelect}
-                              />
-                              <div>
-                                <div
-                                  className={cn(
-                                    "text-sm font-medium text-foreground",
-                                    pendingRemoval && "line-through text-muted-foreground"
-                                  )}
-                                >
-                                  {line.inventoryId ?? "Item"}
+                            <div>
+                              <div className="text-sm font-medium text-foreground">
+                                {line.inventoryId ?? "Item"}
+                              </div>
+                              {line.lineDescription ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {line.lineDescription}
                                 </div>
-                                {line.lineDescription ? (
-                                  <div
-                                    className={cn(
-                                      "text-xs text-muted-foreground",
-                                      pendingRemoval && "line-through"
-                                    )}
-                                  >
-                                    {line.lineDescription}
-                                  </div>
-                                ) : null}
-                                <div
-                                  className={cn(
-                                    "text-[11px] text-muted-foreground",
-                                    pendingRemoval && "line-through"
-                                  )}
-                                >
-                                  Open qty: {Number(line.openQty ?? 0)}
-                                </div>
-                                {pendingRemoval ? (
-                                  <div className="text-[11px] font-medium text-rose-700">
-                                    Marked for removal (applies on Save Items)
-                                  </div>
-                                ) : null}
+                              ) : null}
+                              <div className="text-[11px] text-muted-foreground">
+                                Open qty: {Number(line.openQty ?? selected.qtySelected)}
                               </div>
                             </div>
-                            {selected ? (
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2"
-                                  onClick={() => handleAdjustQty(itemsOrderNbr, line, -1)}
-                                  disabled={isViewer || selected.qtySelected <= 1}
-                                >
-                                  -
-                                </Button>
-                                  <Input
-                                    type="number"
-                                  min={1}
-                                  max={maxQty}
-                                  value={selected.qtySelected}
-                                  onChange={(event) =>
-                                    handleSetQty(itemsOrderNbr, line, Number(event.target.value))
-                                  }
-                                  className="h-7 w-16 text-center"
-                                  disabled={isViewer}
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2"
-                                  onClick={() => handleAdjustQty(itemsOrderNbr, line, 1)}
-                                  disabled={isViewer}
-                                >
-                                  +
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 bg-red-500 text-white hover:bg-red-600"
-                                  onClick={() => handleDeleteItem(itemsOrderNbr, line)}
-                                  disabled={isViewer}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            ) : null}
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2"
+                                onClick={() => handleAdjustQty(itemsOrderNbr, line, -1)}
+                                disabled={isViewer || selected.qtySelected <= 1}
+                              >
+                                -
+                              </Button>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={maxQty}
+                                value={selected.qtySelected}
+                                onChange={(event) =>
+                                  handleSetQty(itemsOrderNbr, line, Number(event.target.value))
+                                }
+                                className="h-7 w-16 text-center"
+                                disabled={isViewer}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2"
+                                onClick={() => handleAdjustQty(itemsOrderNbr, line, 1)}
+                                disabled={isViewer}
+                              >
+                                +
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 bg-red-500 text-white hover:bg-red-600"
+                                onClick={() => handleDeleteItem(itemsOrderNbr, line)}
+                                disabled={isViewer}
+                              >
+                                Delete
+                              </Button>
+                            </div>
                           </label>
                         </div>
                       );
