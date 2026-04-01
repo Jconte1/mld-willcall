@@ -30,7 +30,7 @@ type CustomerUser = {
 export const authOptions: NextAuthOptions = {
   pages: {
     // Staff still uses its own login route
-    signIn: "/willcall/staff/login",
+    signIn: "/staff/login",
   },
   session: {
     strategy: "jwt",

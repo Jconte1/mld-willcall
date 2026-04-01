@@ -146,7 +146,7 @@ export default function SalespersonProfilePage() {
                   <button
                     type="button"
                     className="text-primary underline"
-                    onClick={() => signOut({ callbackUrl: "/willcall/staff/login" })}
+                    onClick={() => signOut({ callbackUrl: "/staff/login" })}
                   >
                     Sign out
                   </button>
