@@ -98,6 +98,8 @@ export default function CustomerAuthCard() {
   const [resendSubmitting, setResendSubmitting] = React.useState(false);
   const [showInviteModal, setShowInviteModal] = React.useState(false);
   const resetSuccess = searchParams.get("reset") === "success";
+  const registerRequested = searchParams.get("register") === "1";
+  const prefillToken = searchParams.get("prefillToken");
 
   const [verifyState, setVerifyState] = React.useState<VerifyState>({ status: "idle" });
   const [lockedUntil, setLockedUntil] = React.useState<number>(0);
@@ -164,6 +166,63 @@ export default function CustomerAuthCard() {
 
     return () => clearInterval(interval);
   }, [syncing]);
+
+  React.useEffect(() => {
+    if (registerRequested) {
+      setTab("register");
+    }
+  }, [registerRequested]);
+
+  React.useEffect(() => {
+    if (!prefillToken) return;
+
+    async function prefillRegistration() {
+      setTab("register");
+
+      try {
+        const res = await fetch("/api/customer/register/prefill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: prefillToken }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(String(data?.message || "Invalid or expired link"));
+        }
+
+        const nextValues = {
+          ...registerForm.getValues(),
+          baid: data?.baid ? String(data.baid) : registerForm.getValues("baid"),
+          zip: data?.zip ? String(data.zip) : registerForm.getValues("zip"),
+          inviteCode: data?.inviteCode
+            ? String(data.inviteCode)
+            : registerForm.getValues("inviteCode"),
+          email: data?.email ? String(data.email) : registerForm.getValues("email"),
+        };
+
+        const applyPrefill = () => {
+          registerForm.reset(nextValues);
+          registerForm.setValue("baid", nextValues.baid, { shouldDirty: false });
+          registerForm.setValue("zip", nextValues.zip, { shouldDirty: false });
+          registerForm.setValue("inviteCode", nextValues.inviteCode, { shouldDirty: false });
+          registerForm.setValue("email", nextValues.email, { shouldDirty: false });
+        };
+
+        applyPrefill();
+        setTimeout(applyPrefill, 0);
+        setTimeout(applyPrefill, 150);
+        setVerifyState({ status: "idle" });
+      } catch {
+        toast({
+          title: "Link expired",
+          description: "This setup link is invalid or expired. Please request a new invite code.",
+        });
+      }
+    }
+
+    void prefillRegistration();
+  }, [prefillToken, registerForm, toast]);
 
   const onLogin = async (values: LoginValues) => {
     setBusy(true);
