@@ -97,6 +97,7 @@ export default function CustomerAuthCard() {
   const [resendPhone, setResendPhone] = React.useState("");
   const [resendSubmitting, setResendSubmitting] = React.useState(false);
   const [showInviteModal, setShowInviteModal] = React.useState(false);
+  const [prefillIdentityLocked, setPrefillIdentityLocked] = React.useState(false);
   const resetSuccess = searchParams.get("reset") === "success";
   const registerRequested = searchParams.get("register") === "1";
   const prefillToken = searchParams.get("prefillToken");
@@ -212,6 +213,20 @@ export default function CustomerAuthCard() {
         applyPrefill();
         setTimeout(applyPrefill, 0);
         setTimeout(applyPrefill, 150);
+        setPrefillIdentityLocked(true);
+
+        if (data?.email) {
+          loginForm.setValue("email", String(data.email), { shouldDirty: false });
+        }
+        if (data?.existingAccount === true) {
+          setTab("login");
+          toast({
+            title: "Account already exists",
+            description: "Please sign in with your existing account.",
+          });
+          return;
+        }
+
         setVerifyState({ status: "idle" });
       } catch {
         toast({
@@ -222,7 +237,7 @@ export default function CustomerAuthCard() {
     }
 
     void prefillRegistration();
-  }, [prefillToken, registerForm, toast]);
+  }, [prefillToken, loginForm, registerForm, toast]);
 
   const onLogin = async (values: LoginValues) => {
     setBusy(true);
@@ -777,8 +792,10 @@ export default function CustomerAuthCard() {
                               <Input
                                 placeholder="Customer ID#"
                                 autoComplete="off"
+                                disabled={prefillIdentityLocked}
                                 {...field}
                                 onChange={(e) => {
+                                  if (prefillIdentityLocked) return;
                                   field.onChange(e.target.value);
                                   if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
                                 }}
@@ -803,8 +820,10 @@ export default function CustomerAuthCard() {
                                 inputMode="numeric"
                                 autoComplete="postal-code"
                                 maxLength={5}
+                                disabled={prefillIdentityLocked}
                                 {...field}
                                 onChange={(e) => {
+                                  if (prefillIdentityLocked) return;
                                   const next = normalizeZip(e.target.value);
                                   field.onChange(next);
                                   if (verifyState.status !== "idle") setVerifyState({ status: "idle" });
@@ -837,18 +856,21 @@ export default function CustomerAuthCard() {
                             placeholder="Invite Code"
                             autoComplete="off"
                             maxLength={12}
+                            disabled={prefillIdentityLocked}
                             {...field}
                           />
                         </FormControl>
-                        <div className="mt-2">
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                            onClick={() => setShowInviteModal(true)}
-                          >
-                            Get a new code
-                          </button>
-                        </div>
+                        {!prefillIdentityLocked ? (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                              onClick={() => setShowInviteModal(true)}
+                            >
+                              Get a new code
+                            </button>
+                          </div>
+                        ) : null}
                         <FormMessage />
                       </FormItem>
                     )}
