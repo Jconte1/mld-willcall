@@ -367,17 +367,18 @@ const ItemSelectionPage: React.FC = () => {
         if ((group.orderType ?? "").trim().toUpperCase() === "R1") return null;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
         const otherFees = group.payment.otherFees ?? 0;
-        const remainingGoodsPreTaxRaw = group.items.reduce((sum, item) => {
+        const remainingGoodsWithTaxRaw = group.items.reduce((sum, item) => {
           const orderQty = item.orderQty ?? 0;
           const lineAmount = item.lineAmount ?? 0;
           if (orderQty <= 0) return sum;
           const perUnitPreTax = lineAmount / orderQty;
+          const perUnitTax = perUnitPreTax * ((item.taxRate ?? 0) / 100);
           const openQty = Math.max(0, item.openQty ?? 0);
           const selectedQty = item.selected ? item.qty : 0;
           const remainingQty = Math.max(0, openQty - selectedQty);
-          return sum + remainingQty * perUnitPreTax;
+          return sum + remainingQty * (perUnitPreTax + perUnitTax);
         }, 0);
-        const remainingValue = Math.round(remainingGoodsPreTaxRaw * 100) / 100;
+        const remainingValue = Math.round(remainingGoodsWithTaxRaw * 100) / 100;
         const remainingWithFees = remainingValue + otherFees;
         const retainRequired = remainingWithFees * 0.5;
         const amountOwed = Math.max(0, unpaidBalance - retainRequired);

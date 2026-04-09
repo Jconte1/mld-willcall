@@ -728,7 +728,7 @@ export default function StaffPickupsPage() {
         const unpaidBalance = Number(order.payment.unpaidBalance ?? 0) || 0;
         const otherFees = Number(order.payment.otherFees ?? 0) || 0;
 
-        const remainingGoodsPreTax = lines.reduce((sum, line) => {
+        const remainingGoodsWithTax = lines.reduce((sum, line) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
           const lineAmount = Number(line.lineAmount ?? 0) || 0;
           if (orderQty <= 0) return sum;
@@ -738,10 +738,11 @@ export default function StaffPickupsPage() {
           const remainingQty = Math.max(0, openQty - selectedQty);
           if (remainingQty <= 0) return sum;
           const perUnitPreTax = lineAmount / orderQty;
-          return sum + remainingQty * perUnitPreTax;
+          const perUnitTax = perUnitPreTax * ((Number(line.taxRate ?? 0) || 0) / 100);
+          return sum + remainingQty * (perUnitPreTax + perUnitTax);
         }, 0);
 
-        const remainingWithFees = remainingGoodsPreTax + otherFees;
+        const remainingWithFees = remainingGoodsWithTax + otherFees;
         const retainRequired = remainingWithFees * 0.5;
         const amountOwed = Math.max(0, unpaidBalance - retainRequired);
         if (amountOwed <= 0) return null;
