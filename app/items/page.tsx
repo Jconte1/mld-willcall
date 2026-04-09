@@ -46,6 +46,7 @@ type OrderGroup = {
   expanded: boolean;
   payment: {
     orderTotal: number | null;
+    otherFees: number | null;
     unpaidBalance: number | null;
     terms: string | null;
     status: string | null;
@@ -104,6 +105,7 @@ type PublicOrderReadyResponse = {
   };
   payment?: {
     orderTotal: number | null;
+    otherFees: number | null;
     unpaidBalance: number | null;
     terms: string | null;
     status: string | null;
@@ -212,6 +214,7 @@ const ItemSelectionPage: React.FC = () => {
           : [];
         const payment = usePublicFlow ? publicPayload?.payment ?? {} : data?.payment ?? {};
         const orderTotal = Number(payment?.orderTotal ?? 0) || 0;
+        const otherFees = Number(payment?.otherFees ?? 0) || 0;
         const unpaidBalance = Number(payment?.unpaidBalance ?? 0) || 0;
         const terms = typeof payment?.terms === "string" ? payment.terms : null;
         const status = typeof payment?.status === "string" ? payment.status : null;
@@ -297,6 +300,7 @@ const ItemSelectionPage: React.FC = () => {
           items: sortedItems,
           payment: {
             orderTotal,
+            otherFees,
             unpaidBalance,
             terms,
             status,
@@ -362,6 +366,7 @@ const ItemSelectionPage: React.FC = () => {
         if (!PREPAY_TERMS.has(terms)) return null;
         if ((group.orderType ?? "").trim().toUpperCase() === "R1") return null;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
+        const otherFees = group.payment.otherFees ?? 0;
         const remainingGoodsPreTaxRaw = group.items.reduce((sum, item) => {
           const orderQty = item.orderQty ?? 0;
           const lineAmount = item.lineAmount ?? 0;
@@ -373,7 +378,8 @@ const ItemSelectionPage: React.FC = () => {
           return sum + remainingQty * perUnitPreTax;
         }, 0);
         const remainingValue = Math.round(remainingGoodsPreTaxRaw * 100) / 100;
-        const retainRequired = remainingValue * 0.5;
+        const remainingWithFees = remainingValue + otherFees;
+        const retainRequired = remainingWithFees * 0.5;
         const amountOwed = Math.max(0, unpaidBalance - retainRequired);
 
         console.log("[prepay-calc]", {
@@ -381,6 +387,7 @@ const ItemSelectionPage: React.FC = () => {
           unpaidBalance,
           retainRequired,
           remainingValue,
+          otherFees,
           amountOwed,
           terms,
         });

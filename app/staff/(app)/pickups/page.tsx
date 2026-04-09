@@ -60,6 +60,7 @@ type StaffOrderLine = {
 
 type StaffOrderPayment = {
   orderTotal: number;
+  otherFees: number | null;
   unpaidBalance: number;
   terms: string | null;
   status: string | null;
@@ -725,6 +726,7 @@ export default function StaffPickupsPage() {
         const lines = orderLinesByOrder[order.orderNbr] ?? [];
         const selectedByLine = selectionsByOrder.get(order.orderNbr) ?? new Map();
         const unpaidBalance = Number(order.payment.unpaidBalance ?? 0) || 0;
+        const otherFees = Number(order.payment.otherFees ?? 0) || 0;
 
         const remainingGoodsPreTax = lines.reduce((sum, line) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
@@ -739,7 +741,8 @@ export default function StaffPickupsPage() {
           return sum + remainingQty * perUnitPreTax;
         }, 0);
 
-        const retainRequired = remainingGoodsPreTax * 0.5;
+        const remainingWithFees = remainingGoodsPreTax + otherFees;
+        const retainRequired = remainingWithFees * 0.5;
         const amountOwed = Math.max(0, unpaidBalance - retainRequired);
         if (amountOwed <= 0) return null;
         return {
