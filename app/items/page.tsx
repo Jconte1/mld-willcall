@@ -134,6 +134,7 @@ const ItemSelectionPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [orderGroups, setOrderGroups] = useState<OrderGroup[]>([]);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   const [creditHoldOpen, setCreditHoldOpen] = useState(false);
   const [returnAckOpen, setReturnAckOpen] = useState(false);
   const [returnAckChecked, setReturnAckChecked] = useState(false);
@@ -463,6 +464,13 @@ const ItemSelectionPage: React.FC = () => {
     );
   };
 
+  const toggleDescription = (lineId: string) => {
+    setExpandedDescriptions((prev) => ({
+      ...prev,
+      [lineId]: !prev[lineId],
+    }));
+  };
+
   const handleSelectAllOrder = (orderNbr: string) => {
     if (lockSelection) return;
     setOrderGroups((prev) =>
@@ -683,15 +691,23 @@ const ItemSelectionPage: React.FC = () => {
                                     No items are available for pickup yet.
                                   </div>
                                 ) : null}
-                                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 px-3 text-xs text-muted-foreground">
+                                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 px-3 text-xs text-muted-foreground sm:gap-4 max-[515px]:grid-cols-1">
                                   <span>Item</span>
-                                  <span className="text-center">Qty</span>
-                                  <span className="text-center">Total on order</span>
+                                  <span className="text-center max-[515px]:hidden">Qty</span>
+                                  <span className="text-center max-[515px]:hidden">Total on order</span>
                                 </div>
-                                {group.items.map((item) => (
+                                {group.items.map((item) => {
+                                  const description = (item.description ?? "No description").trim();
+                                  const isDescriptionLong = description.length > 90;
+                                  const isExpanded = Boolean(expandedDescriptions[item.lineId]);
+                                  const visibleDescription =
+                                    isDescriptionLong && !isExpanded
+                                      ? `${description.slice(0, 90).trimEnd()}...`
+                                      : description;
+                                  return (
                                   <div
                                     key={item.lineId}
-                                    className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 rounded-md border border-border/60 px-3 py-2 ${
+                                    className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-2 rounded-md border border-border/60 px-3 py-2 sm:items-center sm:gap-4 max-[515px]:grid-cols-1 max-[515px]:gap-3 ${
                                       item.isAvailable ? "" : "opacity-50"
                                     } ${lockSelection ? "opacity-60" : ""}`}
                                   >
@@ -711,21 +727,34 @@ const ItemSelectionPage: React.FC = () => {
                                         />
                                       ) : null}
                                       <div className="min-w-0">
-                                        <div className="text-sm font-medium text-foreground truncate">
+                                        <div className="text-sm font-medium leading-tight text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
                                           {item.inventoryId ?? "Item"}
                                         </div>
-                                        <div className="text-xs text-muted-foreground truncate">
-                                          {item.description ?? "No description"}
+                                        <div className="text-xs leading-tight text-muted-foreground">
+                                          {visibleDescription}
                                         </div>
+                                        {isDescriptionLong ? (
+                                          <button
+                                            type="button"
+                                            className="text-[11px] font-medium text-primary hover:underline"
+                                            onClick={(event) => {
+                                              event.preventDefault();
+                                              event.stopPropagation();
+                                              toggleDescription(item.lineId);
+                                            }}
+                                          >
+                                            {isExpanded ? "See less" : "See more"}
+                                          </button>
+                                        ) : null}
                                         {item.warehouse ? (
-                                          <div className="text-xs text-muted-foreground truncate">
+                                          <div className="text-xs leading-tight text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
                                             Warehouse: {item.warehouse}
                                           </div>
                                         ) : null}
                                       </div>
                                     </label>
 
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground max-[515px]:pl-8">
                                       {item.isAvailable ? (
                                         <>
                                           <Button
@@ -763,11 +792,12 @@ const ItemSelectionPage: React.FC = () => {
                                       )}
                                     </div>
 
-                                    <div className="text-center text-sm font-medium text-foreground">
+                                    <div className="text-center text-sm font-medium text-foreground max-[515px]:hidden">
                                       {item.orderQty}
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -817,12 +847,12 @@ const ItemSelectionPage: React.FC = () => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-[calc(100%-1.5rem)] max-w-md p-4 sm:max-w-lg sm:p-6">
           <DialogHeader>
             <DialogTitle>Return Acknowledgement</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 text-sm">
+          <div className="space-y-4 text-sm leading-relaxed">
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
@@ -837,14 +867,14 @@ const ItemSelectionPage: React.FC = () => {
             </label>
           </div>
 
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               onClick={() => {
                 setReturnAckOpen(false);
                 setReturnAckChecked(false);
                 setPendingSelections(null);
               }}
-              className={DESTRUCTIVE_BUTTON}
+              className={`${DESTRUCTIVE_BUTTON} w-full sm:w-auto`}
             >
               Cancel
             </Button>
@@ -857,7 +887,7 @@ const ItemSelectionPage: React.FC = () => {
                 setPendingSelections(null);
                 router.push("/schedule");
               }}
-              className={CONTINUE_BUTTON}
+              className={`${CONTINUE_BUTTON} w-full sm:w-auto`}
               disabled={!returnAckChecked}
             >
               Continue

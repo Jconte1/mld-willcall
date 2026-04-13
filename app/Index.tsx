@@ -53,6 +53,14 @@ type OrderSummaryRow = {
   orderType: string;
   fulfillmentStatus: string;
   paymentStatus: string | null;
+  locationId: string | null;
+  jobsiteAddress: {
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+  } | null;
   warehouses: string[];
   lineSummary: {
     totalLines: number;
@@ -940,6 +948,17 @@ const Index: React.FC = () => {
                                   : unknownWarehouses.length
                                   ? "No pickup location"
                                   : "No pickup location";
+                              const jobsiteName = (order.locationId ?? "").trim();
+                              const showJobsiteName =
+                                jobsiteName.length > 0 && jobsiteName.toUpperCase() !== "MAIN";
+                              const jobsiteAddressParts = [
+                                order.jobsiteAddress?.addressLine1?.trim(),
+                                order.jobsiteAddress?.addressLine2?.trim(),
+                                order.jobsiteAddress?.city?.trim(),
+                                order.jobsiteAddress?.state?.trim(),
+                                order.jobsiteAddress?.postalCode?.trim(),
+                              ].filter((part): part is string => Boolean(part));
+                              const jobsiteAddress = jobsiteAddressParts.join(", ");
 
                               return (
                                 <div
@@ -995,7 +1014,19 @@ const Index: React.FC = () => {
                                       </Button>
                                     </div>
                                     <div className="text-sm text-muted-foreground">
-                                      {order.jobName || order.customerName}
+                                      <div>{order.jobName || order.customerName}</div>
+                                      {showJobsiteName ? (
+                                        <div>
+                                          <span className="font-semibold text-foreground">Jobsite Name:</span>{" "}
+                                          {jobsiteName}
+                                        </div>
+                                      ) : null}
+                                      {jobsiteAddress ? (
+                                        <div>
+                                          <span className="font-semibold text-foreground">Jobsite Address:</span>{" "}
+                                          {jobsiteAddress}
+                                        </div>
+                                      ) : null}
                                     </div>
                                     {lastPickupLabel ? (
                                       <div className="text-xs text-muted-foreground">
@@ -1003,10 +1034,18 @@ const Index: React.FC = () => {
                                       </div>
                                     ) : null}
                                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                                      <span>Type: {order.orderType}</span>
-                                      <span>Status: {order.status}</span>
-                                      <span>Requested Date: {dateLabel}</span>
-                                      <span>Pickup: {locationLabel}</span>
+                                      <span>
+                                        <span className="font-semibold text-foreground">Type:</span> {order.orderType}
+                                      </span>
+                                      <span>
+                                        <span className="font-semibold text-foreground">Status:</span> {order.status}
+                                      </span>
+                                      <span>
+                                        <span className="font-semibold text-foreground">Requested Date:</span> {dateLabel}
+                                      </span>
+                                      <span>
+                                        <span className="font-semibold text-foreground">Pick up location:</span> {locationLabel}
+                                      </span>
                                     </div>
                                     {isScheduled && order.appointment ? (
                                       <div className="flex flex-wrap items-center gap-3">
