@@ -61,6 +61,7 @@ type OrderGroup = {
 };
 
 const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
+const PREPAY_MIN_DUE = 1;
 const MIN_DEPOSIT_RATIO = 0.47;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const DESTRUCTIVE_BUTTON =
@@ -393,7 +394,7 @@ const ItemSelectionPage: React.FC = () => {
           terms,
         });
 
-        if (amountOwed <= 0) return null;
+        if (amountOwed < PREPAY_MIN_DUE) return null;
         return {
           orderNbr: group.orderNbr,
           remainingValue,

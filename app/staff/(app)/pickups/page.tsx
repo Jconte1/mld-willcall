@@ -134,6 +134,7 @@ const SLOT_HEIGHT_WEEK = 64;
 const SLOT_HEIGHT_DAY = 72;
 const SHIPMENT_FORMAT = /^SMT\d{7}$/;
 const PREPAY_TERMS = new Set(["PP", "PPP", "PPT", "TRADE", "CONTRACT"]);
+const PREPAY_MIN_DUE = 1;
 const DESTRUCTIVE_BUTTON = "bg-red-500 text-white hover:bg-red-600 hover:-translate-y-[1px] transition-transform";
 const ACTIVE_BLOCKING_STATUSES: AppointmentStatus[] = ["Scheduled", "Confirmed", "InProgress", "Ready"];
 
@@ -745,7 +746,7 @@ export default function StaffPickupsPage() {
         const remainingWithFees = remainingGoodsWithTax + otherFees;
         const retainRequired = remainingWithFees * 0.5;
         const amountOwed = Math.max(0, unpaidBalance - retainRequired);
-        if (amountOwed <= 0) return null;
+        if (amountOwed < PREPAY_MIN_DUE) return null;
         return {
           orderNbr: order.orderNbr,
           amountOwed: Math.round(amountOwed * 100) / 100,
