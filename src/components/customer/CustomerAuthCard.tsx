@@ -44,8 +44,12 @@ const registerSchema = z
       .transform((v) => v.trim())
       .refine((v) => BAID_REGEX.test(v), { message: "Customer ID# must be BA + 7 digits" }),
     inviteCode: z.string().min(6, "Invite code is required"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
-    confirmPassword: z.string().min(6, "Confirm your password"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[0-9]/, "Password must include at least 1 number")
+      .regex(/[^A-Za-z0-9]/, "Password must include at least 1 symbol"),
+    confirmPassword: z.string().min(1, "Confirm your password"),
   })
   .refine((d) => d.password === d.confirmPassword, {
     message: "Passwords do not match",
@@ -388,7 +392,9 @@ export default function CustomerAuthCard() {
         toast({
           title: "Registration failed",
           description:
-            "We couldn't confirm your Customer ID#, ZIP code, or invite code. Please contact your salesperson.",
+            typeof data?.message === "string" && data.message.trim()
+              ? data.message
+              : "Unable to create your account.",
         });
         return;
       }
