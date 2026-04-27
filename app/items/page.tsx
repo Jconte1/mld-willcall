@@ -369,6 +369,24 @@ const ItemSelectionPage: React.FC = () => {
         if ((group.orderType ?? "").trim().toUpperCase() === "R1") return null;
         const unpaidBalance = group.payment.unpaidBalance ?? 0;
         const otherFees = group.payment.otherFees ?? 0;
+        const openItems = group.items.filter((item) => Math.max(0, item.openQty ?? 0) > 0);
+        const allOpenQtySelected =
+          openItems.length > 0 &&
+          openItems.every((item) => {
+            const openQty = Math.max(0, item.openQty ?? 0);
+            const selectedQty = item.selected ? item.qty : 0;
+            return selectedQty >= openQty;
+          });
+        if (allOpenQtySelected) {
+          const amountOwed = Math.max(0, unpaidBalance);
+          if (amountOwed < PREPAY_MIN_DUE) return null;
+          return {
+            orderNbr: group.orderNbr,
+            remainingValue: 0,
+            amountOwed,
+            salesPerson: group.salesPerson ?? null,
+          };
+        }
         const remainingGoodsWithTaxRaw = group.items.reduce((sum, item) => {
           const orderQty = item.orderQty ?? 0;
           const lineAmount = item.lineAmount ?? 0;

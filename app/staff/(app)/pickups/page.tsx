@@ -728,6 +728,24 @@ export default function StaffPickupsPage() {
         const selectedByLine = selectionsByOrder.get(order.orderNbr) ?? new Map();
         const unpaidBalance = Number(order.payment.unpaidBalance ?? 0) || 0;
         const otherFees = Number(order.payment.otherFees ?? 0) || 0;
+        const openLines = lines.filter((line) => Math.max(0, Number(line.openQty ?? 0)) > 0);
+        const allOpenQtySelected =
+          openLines.length > 0 &&
+          openLines.every((line) => {
+            const selected = selectedByLine.get(line.id);
+            const selectedQty = selected ? selected.qty : 0;
+            const openQty = Math.max(0, Number(line.openQty ?? 0));
+            return selectedQty >= openQty;
+          });
+        if (allOpenQtySelected) {
+          const amountOwed = Math.max(0, unpaidBalance);
+          if (amountOwed < PREPAY_MIN_DUE) return null;
+          return {
+            orderNbr: order.orderNbr,
+            amountOwed: Math.round(amountOwed * 100) / 100,
+            salesPerson: order.salesPerson,
+          };
+        }
 
         const remainingGoodsWithTax = lines.reduce((sum, line) => {
           const orderQty = Number(line.orderQty ?? 0) || 0;
