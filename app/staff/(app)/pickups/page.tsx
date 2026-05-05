@@ -1647,7 +1647,15 @@ export default function StaffPickupsPage() {
                 </div>
               </div>
 
-              <div className={cn("grid gap-4", view === "week" ? "grid-cols-7" : "grid-cols-1")}>
+              <div
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns:
+                    view === "week"
+                      ? `repeat(${visibleDays.length}, minmax(0, 1fr))`
+                      : "repeat(1, minmax(0, 1fr))",
+                }}
+              >
                 {visibleDays.map((day) => (
                   <div key={day.toISOString()} className="space-y-2">
                     <div className="text-xs font-semibold text-muted-foreground">
