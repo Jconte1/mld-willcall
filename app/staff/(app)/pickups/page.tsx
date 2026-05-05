@@ -354,8 +354,12 @@ export default function StaffPickupsPage() {
   }, [selectedDate, view]);
 
   const rangeEnd = useMemo(() => {
-    return view === "week" ? endOfWeek(selectedDate, { weekStartsOn: 1 }) : selectedDate;
-  }, [selectedDate, view]);
+    if (view === "day") return selectedDate;
+    const days = Array.from({ length: 7 }, (_, idx) => addDays(rangeStart, idx)).filter(
+      (day) => day.getDay() !== 0 && day.getDay() !== 6
+    );
+    return days[days.length - 1] || rangeStart;
+  }, [rangeStart, selectedDate, view]);
 
   const slotHeight = view === "day" ? SLOT_HEIGHT_DAY : SLOT_HEIGHT_WEEK;
 
@@ -367,7 +371,9 @@ export default function StaffPickupsPage() {
 
   const visibleDays = useMemo(() => {
     if (view === "day") return [selectedDate];
-    return Array.from({ length: 7 }, (_, idx) => addDays(rangeStart, idx));
+    return Array.from({ length: 7 }, (_, idx) => addDays(rangeStart, idx)).filter(
+      (day) => day.getDay() !== 0 && day.getDay() !== 6
+    );
   }, [rangeStart, selectedDate, view]);
 
   const accessibleLocations = useMemo(() => {
