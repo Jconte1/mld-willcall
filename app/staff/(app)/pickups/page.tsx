@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +118,12 @@ type DayAvailabilityResponse = {
     date: string;
     slots: DayAvailabilitySlot[];
   }>;
+};
+
+type PendingSlotChange = {
+  date: string;
+  startTime: string;
+  available: boolean;
 };
 
 type LayoutItem = StaffPickup & {
@@ -313,6 +319,9 @@ export default function StaffPickupsPage() {
   const [returnAckChecked, setReturnAckChecked] = useState(false);
   const [pendingCreatePayload, setPendingCreatePayload] = useState<Record<string, unknown> | null>(null);
   const [availabilityByDate, setAvailabilityByDate] = useState<Map<string, DayAvailabilitySlot[]>>(new Map());
+  const [pendingSlotChanges, setPendingSlotChanges] = useState<Record<string, Record<string, boolean>>>({});
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState("");
   const [formData, setFormData] = useState({
     locationId: "",
     customerEmail: "",
@@ -436,6 +445,82 @@ export default function StaffPickupsPage() {
     }
   };
 
+  const pendingChangeCount = useMemo(
+    () => Object.values(pendingSlotChanges).reduce((total, changes) => total + Object.keys(changes).length, 0),
+    [pendingSlotChanges]
+  );
+
+  const getCurrentSlotAvailability = (date: string, startTime: string) => {
+    const slots = availabilityByDate.get(date);
+    return slots?.find((slot) => slot.startTime === startTime)?.available ?? true;
+  };
+
+  const hasPendingSlotChange = (date: string, startTime: string) => {
+    return pendingSlotChanges[date]?.[startTime] !== undefined;
+  };
+
+  const getEffectiveSlotAvailability = (date: string, startTime: string) => {
+    const pending = pendingSlotChanges[date]?.[startTime];
+    return pending !== undefined ? pending : getCurrentSlotAvailability(date, startTime);
+  };
+
+  const handleToggleSlotAvailability = (date: string, startTime: string, available: boolean) => {
+    setPendingSlotChanges((prev) => {
+      const current = getCurrentSlotAvailability(date, startTime);
+      const next = { ...prev };
+      const nextDate = { ...(next[date] ?? {}) };
+
+      if (available === current) {
+        delete nextDate[startTime];
+      } else {
+        nextDate[startTime] = available;
+      }
+
+      if (Object.keys(nextDate).length) {
+        next[date] = nextDate;
+      } else {
+        delete next[date];
+      }
+
+      return next;
+    });
+    setSaveStatus("idle");
+    setSaveMessage("");
+  };
+
+  const handleSaveAvailabilityChanges = async () => {
+    if (selectedLocations.length !== 1 || pendingChangeCount === 0) return;
+
+    setSaveStatus("saving");
+    setSaveMessage("");
+
+    const payload = {
+      locationId: selectedLocations[0],
+      changes: Object.entries(pendingSlotChanges).flatMap(([date, slotMap]) =>
+        Object.entries(slotMap).map(([startTime, available]) => ({ date, startTime, available }))
+      ),
+    };
+
+    try {
+      const res = await fetch("/api/staff/pickups/availability", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message ?? "Unable to save availability changes.");
+      }
+      setPendingSlotChanges({});
+      setSaveStatus("success");
+      setSaveMessage("Availability changes saved.");
+      await fetchAvailability();
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save availability changes.");
+    }
+  };
+
   const fetchAppointments = async () => {
     if (!session?.user?.role) return;
     setLoading(true);
@@ -537,6 +622,14 @@ export default function StaffPickupsPage() {
     fetchAppointments();
     fetchAvailability();
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
+
+  useEffect(() => {
+    if (selectedLocations.length !== 1) {
+      setPendingSlotChanges({});
+      setSaveStatus("idle");
+      setSaveMessage("");
+    }
+  }, [selectedLocations.join("|")]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1419,17 +1512,29 @@ export default function StaffPickupsPage() {
       >
         {/* Background grid for available/blocked slots */}
         {selectedLocations.length === 1 && daySlots.map((slot, index) => {
-          const [hours, minutes] = slot.startTime.split(':').map(Number);
+          const [hours, minutes] = slot.startTime.split(":").map(Number);
           const slotMinutes = hours * 60 + minutes;
           const top = ((slotMinutes - START_HOUR * 60) / SLOT_MINUTES) * slotHeight;
-          const isAvailable = slot.available;
+          const effectiveAvailable = getEffectiveSlotAvailability(dateKey, slot.startTime);
+          const isPending = hasPendingSlotChange(dateKey, slot.startTime);
+          const occupiedSlots = new Set<string>();
+          for (const appointment of dayAppointments) {
+            const appointmentStart = parseISO(appointment.startAt);
+            const appointmentEnd = parseISO(appointment.endAt);
+            const start = appointmentStart.getHours() * 60 + appointmentStart.getMinutes();
+            const end = appointmentEnd.getHours() * 60 + appointmentEnd.getMinutes();
+            for (let minute = start; minute < end; minute += SLOT_MINUTES) {
+              occupiedSlots.add(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+            }
+          }
+          const isSlotOccupied = occupiedSlots.has(slot.startTime);
 
           return (
             <div
               key={`slot-${index}`}
               className={cn(
                 "absolute left-0 right-0 text-xs text-center py-1 border-t border-border/20",
-                isAvailable
+                effectiveAvailable
                   ? "bg-green-50/30 text-green-700/70"
                   : "bg-gray-100/50 text-gray-600/70"
               )}
@@ -1438,7 +1543,47 @@ export default function StaffPickupsPage() {
                 height: slotHeight,
               }}
             >
-              {isAvailable ? "Available" : "Blocked"}
+              <div className="relative h-full">
+                {!isSlotOccupied && canEditAppointments ? (
+                  <div className="absolute inset-y-0 right-2 flex items-center justify-end pr-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-white text-muted-foreground hover:bg-slate-50"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-32 p-1">
+                        <button
+                          type="button"
+                          disabled={effectiveAvailable}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm",
+                            effectiveAvailable ? "text-muted-foreground" : "hover:bg-slate-100"
+                          )}
+                          onClick={() => handleToggleSlotAvailability(dateKey, slot.startTime, true)}
+                        >
+                          Available
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!effectiveAvailable}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm",
+                            !effectiveAvailable ? "text-muted-foreground" : "hover:bg-slate-100"
+                          )}
+                          onClick={() => handleToggleSlotAvailability(dateKey, slot.startTime, false)}
+                        >
+                          Blocked
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ) : null}
+                <div className={cn("h-full flex items-center justify-center", isPending ? "italic" : "")}>{effectiveAvailable ? "Available" : "Blocked"}{isPending ? " • Pending" : ""}</div>
+              </div>
             </div>
           );
         })}
@@ -1557,6 +1702,25 @@ export default function StaffPickupsPage() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+
+            {canEditAppointments && selectedLocations.length === 1 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={pendingChangeCount === 0 || saveStatus === "saving"}
+                  onClick={handleSaveAvailabilityChanges}
+                >
+                  Save availability
+                </Button>
+                {saveStatus === "success" ? (
+                  <span className="text-sm text-success">{saveMessage || "Saved"}</span>
+                ) : saveStatus === "error" ? (
+                  <span className="text-sm text-destructive">{saveMessage}</span>
+                ) : pendingChangeCount > 0 ? (
+                  <span className="text-sm text-muted-foreground">{pendingChangeCount} pending</span>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* moved to staff nav */}
           </div>
