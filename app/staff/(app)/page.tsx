@@ -97,6 +97,17 @@ export default function StaffHomePage() {
     }
   }, [router, session?.user?.role]);
 
+  // Auto-refresh every 15 minutes when logged in
+  useEffect(() => {
+    if (!session) return;
+
+    const interval = setInterval(() => {
+      window.location.reload();
+    }, 15 * 60 * 1000); // 15 minutes in milliseconds
+
+    return () => clearInterval(interval);
+  }, [session]);
+
   useEffect(() => {
     const fetchBoard = async () => {
       setLoading(true);

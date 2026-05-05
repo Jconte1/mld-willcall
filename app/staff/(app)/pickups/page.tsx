@@ -312,6 +312,7 @@ export default function StaffPickupsPage() {
   const [returnAckOpen, setReturnAckOpen] = useState(false);
   const [returnAckChecked, setReturnAckChecked] = useState(false);
   const [pendingCreatePayload, setPendingCreatePayload] = useState<Record<string, unknown> | null>(null);
+  const [availabilityByDate, setAvailabilityByDate] = useState<Map<string, DayAvailabilitySlot[]>>(new Map());
   const [formData, setFormData] = useState({
     locationId: "",
     customerEmail: "",
@@ -336,6 +337,17 @@ export default function StaffPickupsPage() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Auto-refresh every 15 minutes when logged in
+  useEffect(() => {
+    if (!session) return;
+
+    const interval = setInterval(() => {
+      window.location.reload();
+    }, 15 * 60 * 1000); // 15 minutes in milliseconds
+
+    return () => clearInterval(interval);
+  }, [session]);
 
   const rangeStart = useMemo(() => {
     return view === "week" ? startOfWeek(selectedDate, { weekStartsOn: 1 }) : selectedDate;
@@ -386,6 +398,36 @@ export default function StaffPickupsPage() {
       }
       return prev.filter((item) => item !== status);
     });
+  };
+
+  const fetchAvailability = async () => {
+    if (selectedLocations.length !== 1) {
+      setAvailabilityByDate(new Map());
+      return;
+    }
+
+    const params = new URLSearchParams({
+      locationId: selectedLocations[0],
+      from: format(rangeStart, "yyyy-MM-dd"),
+      to: format(rangeEnd, "yyyy-MM-dd"),
+    });
+
+    try {
+      const res = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
+      const data: DayAvailabilityResponse = await res.json().catch(() => ({}));
+      if (res.ok && data.availability) {
+        const availabilityMap = new Map<string, DayAvailabilitySlot[]>();
+        data.availability.forEach((day) => {
+          availabilityMap.set(day.date, day.slots);
+        });
+        setAvailabilityByDate(availabilityMap);
+      } else {
+        setAvailabilityByDate(new Map());
+      }
+    } catch (error) {
+      console.warn("[staff-pickups] availability fetch failed", error);
+      setAvailabilityByDate(new Map());
+    }
   };
 
   const fetchAppointments = async () => {
@@ -487,6 +529,7 @@ export default function StaffPickupsPage() {
 
   useEffect(() => {
     fetchAppointments();
+    fetchAvailability();
   }, [rangeStart, rangeEnd, selectedLocations.join("|")]);
 
   useEffect(() => {
@@ -1359,6 +1402,7 @@ export default function StaffPickupsPage() {
     const dateKey = format(day, "yyyy-MM-dd");
     const dayAppointments = appointmentsByDay.get(dateKey) ?? [];
     const layout = layoutAppointments(dayAppointments, slotHeight);
+    const daySlots = availabilityByDate.get(dateKey) ?? [];
 
     return (
       <div
@@ -1367,6 +1411,32 @@ export default function StaffPickupsPage() {
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => handleDragDrop(event, day)}
       >
+        {/* Background grid for available/blocked slots */}
+        {selectedLocations.length === 1 && daySlots.map((slot, index) => {
+          const [hours, minutes] = slot.startTime.split(':').map(Number);
+          const slotMinutes = hours * 60 + minutes;
+          const top = ((slotMinutes - START_HOUR * 60) / SLOT_MINUTES) * slotHeight;
+          const isAvailable = slot.available;
+
+          return (
+            <div
+              key={`slot-${index}`}
+              className={cn(
+                "absolute left-0 right-0 text-xs text-center py-1 border-t border-border/20",
+                isAvailable
+                  ? "bg-green-50/30 text-green-700/70"
+                  : "bg-gray-100/50 text-gray-600/70"
+              )}
+              style={{
+                top: top,
+                height: slotHeight,
+              }}
+            >
+              {isAvailable ? "Available" : "Blocked"}
+            </div>
+          );
+        })}
+
         {layout.map((apt) => {
           const width = 100 / apt.columnCount;
           const left = width * apt.column;
@@ -1385,7 +1455,7 @@ export default function StaffPickupsPage() {
               }
               onClick={canEditAppointments ? () => handleOpenEdit(apt) : undefined}
               className={cn(
-                "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden",
+                "absolute rounded-lg border border-border/60 text-xs shadow-sm cursor-pointer overflow-hidden z-10",
                 isCompact ? "p-1" : "p-2",
                 "bg-white hover:shadow-md transition-shadow"
               )}
