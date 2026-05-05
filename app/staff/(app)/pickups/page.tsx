@@ -110,7 +110,10 @@ type StaffOrderSelection = {
 
 type DayAvailabilitySlot = {
   startTime: string;
+  endTime?: string;
   available: boolean;
+  manuallyBlocked?: boolean;
+  occupied?: boolean;
 };
 
 type DayAvailabilityResponse = {
@@ -312,7 +315,7 @@ export default function StaffPickupsPage() {
   const [createModalError, setCreateModalError] = useState("");
   const [createOrders, setCreateOrders] = useState<StaffCreateOrder[]>([]);
   const [createDayAppointments, setCreateDayAppointments] = useState<StaffPickup[]>([]);
-  const [salespersonAvailableStartTimes, setSalespersonAvailableStartTimes] = useState<string[] | null>(null);
+  const [createAvailableStartTimes, setCreateAvailableStartTimes] = useState<string[] | null>(null);
   const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
   const [prepayOverride, setPrepayOverride] = useState(false);
   const [returnAckOpen, setReturnAckOpen] = useState(false);
@@ -396,9 +399,9 @@ export default function StaffPickupsPage() {
 
   useEffect(() => {
     if (!selectedLocations.length && accessibleLocations.length) {
-      setSelectedLocations(accessibleLocations);
+      setSelectedLocations(canEditAppointments ? [accessibleLocations[0]] : accessibleLocations);
     }
-  }, [accessibleLocations, selectedLocations.length]);
+  }, [accessibleLocations, canEditAppointments, selectedLocations.length]);
 
   const locationSelectValue = useMemo(() => {
     if (accessibleLocations.length <= 1) return accessibleLocations[0] ?? "";
@@ -428,7 +431,7 @@ export default function StaffPickupsPage() {
     });
 
     try {
-      const res = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
+      const res = await fetch(`/api/staff/pickups/availability?${params.toString()}`);
       const data: DayAvailabilityResponse = await res.json().catch(() => ({}));
       if (res.ok && data.availability) {
         const availabilityMap = new Map<string, DayAvailabilitySlot[]>();
@@ -684,6 +687,19 @@ export default function StaffPickupsPage() {
     return map;
   }, [filteredAppointments]);
 
+  const blockingAppointmentsByDay = useMemo(() => {
+    const map = new Map<string, StaffPickup[]>();
+    appointments
+      .filter((apt) => ACTIVE_BLOCKING_STATUSES.includes(apt.status))
+      .forEach((apt) => {
+        const dateKey = format(parseISO(apt.startAt), "yyyy-MM-dd");
+        const list = map.get(dateKey) ?? [];
+        list.push(apt);
+        map.set(dateKey, list);
+      });
+    return map;
+  }, [appointments]);
+
   // In day view, allow empty days without snapping to the first appointment date.
 
   const timeLabels = useMemo(() => {
@@ -718,25 +734,24 @@ export default function StaffPickupsPage() {
     const day = format(parsedDate, "yyyy-MM-dd");
 
     const load = async () => {
-      setSalespersonAvailableStartTimes(null);
+      setCreateAvailableStartTimes(null);
       const params = new URLSearchParams({
         from: day,
         to: day,
         locationId: formData.locationId,
       });
-      if (isSalesperson) {
-        const availabilityRes = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
-        const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
-        if (availabilityRes.ok) {
-          const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
-          const options = (dayRow?.slots ?? [])
-            .filter((slot) => slot.available)
-            .map((slot) => hhmmToLabel(slot.startTime))
-            .filter(Boolean);
-          setSalespersonAvailableStartTimes(options);
-        } else {
-          setSalespersonAvailableStartTimes([]);
-        }
+      const availabilityPath = isSalesperson ? "/api/customer/pickups/availability" : "/api/staff/pickups/availability";
+      const availabilityRes = await fetch(`${availabilityPath}?${params.toString()}`);
+      const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
+      if (availabilityRes.ok) {
+        const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
+        const options = (dayRow?.slots ?? [])
+          .filter((slot) => slot.available)
+          .map((slot) => hhmmToLabel(slot.startTime))
+          .filter(Boolean);
+        setCreateAvailableStartTimes(options);
+      } else {
+        setCreateAvailableStartTimes([]);
       }
 
       const res = await fetch(`/api/staff/pickups?${params.toString()}`);
@@ -754,18 +769,28 @@ export default function StaffPickupsPage() {
 
   const availableCreateStartTimeOptions = useMemo(() => {
     if (!isCreating) return createStartTimeOptions;
-    if (isSalesperson) return salespersonAvailableStartTimes ?? [];
     const parsedDate = parse(formData.date, "MM/dd/yyyy", new Date());
     if (Number.isNaN(parsedDate.getTime())) return createStartTimeOptions;
     const now = new Date();
     const salespersonMinStart = new Date(now.getTime() + 4 * 60 * 60_000);
+
+    if (createAvailableStartTimes !== null) {
+      return createAvailableStartTimes.filter((option) => {
+        const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
+        if (Number.isNaN(startAt.getTime())) return false;
+        if (startAt <= now) return false;
+        if (isSalesperson && startAt < salespersonMinStart) return false;
+        return true;
+      });
+    }
+
+    if (isSalesperson) return [];
 
     return createStartTimeOptions.filter((option) => {
       const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
       if (Number.isNaN(startAt.getTime())) return false;
       const endAt = new Date(startAt.getTime() + SLOT_MINUTES * 60_000);
       if (startAt <= now) return false;
-      if (isSalesperson && startAt < salespersonMinStart) return false;
 
       const blocked = createDayAppointments.some((apt) => {
         if (!ACTIVE_BLOCKING_STATUSES.includes(apt.status)) return false;
@@ -784,7 +809,7 @@ export default function StaffPickupsPage() {
     formData.locationId,
     createDayAppointments,
     isSalesperson,
-    salespersonAvailableStartTimes,
+    createAvailableStartTimes,
   ]);
 
   useEffect(() => {
@@ -1262,6 +1287,7 @@ export default function StaffPickupsPage() {
     setCreateModalError("");
     setCreateOrders([]);
     setCreateDayAppointments([]);
+    setCreateAvailableStartTimes(null);
     setPrepayOverride(false);
     const start = toIsoLocal(selectedDate);
     const startDate = parseISO(start);
@@ -1497,11 +1523,33 @@ export default function StaffPickupsPage() {
     await submitUpdate(appointment.id, updateBody, false, "");
   };
 
+  const buildFallbackDaySlots = (dateKey: string, dayAppointments: StaffPickup[]) => {
+    const blocked = new Set<string>();
+    for (const appointment of dayAppointments) {
+      const start = parseISO(appointment.startAt);
+      const end = parseISO(appointment.endAt);
+      let minutes = start.getHours() * 60 + start.getMinutes();
+      const endMinutes = end.getHours() * 60 + end.getMinutes();
+      while (minutes < endMinutes) {
+        blocked.add(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
+        minutes += SLOT_MINUTES;
+      }
+    }
+
+    const slots: DayAvailabilitySlot[] = [];
+    for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60 - SLOT_MINUTES; minutes += SLOT_MINUTES) {
+      const startTime = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      slots.push({ startTime, available: !blocked.has(startTime) });
+    }
+    return slots;
+  };
+
   const renderAppointments = (day: Date) => {
     const dateKey = format(day, "yyyy-MM-dd");
     const dayAppointments = appointmentsByDay.get(dateKey) ?? [];
+    const blockingAppointments = blockingAppointmentsByDay.get(dateKey) ?? [];
     const layout = layoutAppointments(dayAppointments, slotHeight);
-    const daySlots = availabilityByDate.get(dateKey) ?? [];
+    const daySlots = availabilityByDate.get(dateKey) ?? buildFallbackDaySlots(dateKey, blockingAppointments);
 
     return (
       <div
@@ -1518,7 +1566,7 @@ export default function StaffPickupsPage() {
           const effectiveAvailable = getEffectiveSlotAvailability(dateKey, slot.startTime);
           const isPending = hasPendingSlotChange(dateKey, slot.startTime);
           const occupiedSlots = new Set<string>();
-          for (const appointment of dayAppointments) {
+          for (const appointment of blockingAppointments) {
             const appointmentStart = parseISO(appointment.startAt);
             const appointmentEnd = parseISO(appointment.endAt);
             const start = appointmentStart.getHours() * 60 + appointmentStart.getMinutes();
@@ -1527,7 +1575,7 @@ export default function StaffPickupsPage() {
               occupiedSlots.add(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
             }
           }
-          const isSlotOccupied = occupiedSlots.has(slot.startTime);
+          const isSlotOccupied = slot.occupied ?? occupiedSlots.has(slot.startTime);
 
           return (
             <div

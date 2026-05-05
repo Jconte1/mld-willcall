@@ -9,6 +9,39 @@ function getAuthHeader(session: any) {
   return token ? { Authorization: `Bearer ${token}` } : null;
 }
 
+export async function GET(req: Request) {
+  const session = await getServerSession(authOptions);
+  const authHeader = getAuthHeader(session);
+  if (!authHeader) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!STAFF_API_BASE_URL) {
+    return NextResponse.json({ message: "Staff backend not configured" }, { status: 501 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const locationId = searchParams.get("locationId");
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+
+  if (!locationId || !from || !to) {
+    return NextResponse.json({ message: "Invalid query parameters" }, { status: 400 });
+  }
+
+  const params = new URLSearchParams({ locationId, from, to });
+  const res = await fetch(`${STAFF_API_BASE_URL}/api/staff/pickups/availability?${params.toString()}`, {
+    headers: authHeader,
+    cache: "no-store",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  return NextResponse.json(data, {
+    status: res.status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
   const authHeader = getAuthHeader(session);
