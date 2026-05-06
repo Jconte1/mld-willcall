@@ -194,10 +194,32 @@ function addMinutesToTimeLabel(timeStr: string, minutes: number) {
   return format(new Date(parsed.getTime() + minutes * 60_000), "h:mm a");
 }
 
-function hhmmToLabel(value: string) {
+function hhmmToMinutes(value: string) {
   const [hh, mm] = value.split(":").map((part) => Number(part));
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "";
-  return minutesToLabel(hh * 60 + mm);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return hh * 60 + mm;
+}
+
+function minutesToHhmm(value: number) {
+  const minutes = ((value % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function hhmmToLabel(value: string) {
+  const minutes = hhmmToMinutes(value);
+  if (minutes == null) return "";
+  return minutesToLabel(minutes);
+}
+
+function formatSlotTimeRange(slot: DayAvailabilitySlot) {
+  const startMinutes = hhmmToMinutes(slot.startTime);
+  if (startMinutes == null) return "";
+  const start = hhmmToLabel(slot.startTime);
+  const end = hhmmToLabel(slot.endTime ?? minutesToHhmm(startMinutes + SLOT_MINUTES));
+  if (!start || !end) return "";
+  return `${start} - ${end}`;
 }
 
 function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) {
@@ -740,8 +762,7 @@ export default function StaffPickupsPage() {
         to: day,
         locationId: formData.locationId,
       });
-      const availabilityPath = isSalesperson ? "/api/customer/pickups/availability" : "/api/staff/pickups/availability";
-      const availabilityRes = await fetch(`${availabilityPath}?${params.toString()}`);
+      const availabilityRes = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
       const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
       if (availabilityRes.ok) {
         const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
@@ -765,26 +786,21 @@ export default function StaffPickupsPage() {
     };
 
     void load();
-  }, [dialogOpen, isCreating, formData.locationId, formData.date, isSalesperson]);
+  }, [dialogOpen, isCreating, formData.locationId, formData.date]);
 
   const availableCreateStartTimeOptions = useMemo(() => {
     if (!isCreating) return createStartTimeOptions;
     const parsedDate = parse(formData.date, "MM/dd/yyyy", new Date());
     if (Number.isNaN(parsedDate.getTime())) return createStartTimeOptions;
     const now = new Date();
-    const salespersonMinStart = new Date(now.getTime() + 4 * 60 * 60_000);
-
     if (createAvailableStartTimes !== null) {
       return createAvailableStartTimes.filter((option) => {
         const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
         if (Number.isNaN(startAt.getTime())) return false;
         if (startAt <= now) return false;
-        if (isSalesperson && startAt < salespersonMinStart) return false;
         return true;
       });
     }
-
-    if (isSalesperson) return [];
 
     return createStartTimeOptions.filter((option) => {
       const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
@@ -1539,7 +1555,8 @@ export default function StaffPickupsPage() {
     const slots: DayAvailabilitySlot[] = [];
     for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60 - SLOT_MINUTES; minutes += SLOT_MINUTES) {
       const startTime = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-      slots.push({ startTime, available: !blocked.has(startTime) });
+      const endTime = minutesToHhmm(minutes + SLOT_MINUTES);
+      slots.push({ startTime, endTime, available: !blocked.has(startTime) });
     }
     return slots;
   };
@@ -1565,6 +1582,7 @@ export default function StaffPickupsPage() {
           const top = ((slotMinutes - START_HOUR * 60) / SLOT_MINUTES) * slotHeight;
           const effectiveAvailable = getEffectiveSlotAvailability(dateKey, slot.startTime);
           const isPending = hasPendingSlotChange(dateKey, slot.startTime);
+          const slotTimeRange = formatSlotTimeRange(slot);
           const occupiedSlots = new Set<string>();
           for (const appointment of blockingAppointments) {
             const appointmentStart = parseISO(appointment.startAt);
@@ -1630,7 +1648,17 @@ export default function StaffPickupsPage() {
                     </Popover>
                   </div>
                 ) : null}
-                <div className={cn("h-full flex items-center justify-center", isPending ? "italic" : "")}>{effectiveAvailable ? "Available" : "Blocked"}{isPending ? " • Pending" : ""}</div>
+                <div
+                  className={cn(
+                    "h-full flex flex-col items-center justify-center gap-0.5 px-10 leading-tight",
+                    isPending ? "italic" : ""
+                  )}
+                >
+                  <span>{effectiveAvailable ? "Available" : "Blocked"}{isPending ? " - Pending" : ""}</span>
+                  {slotTimeRange ? (
+                    <span className="text-[11px] text-muted-foreground">{slotTimeRange}</span>
+                  ) : null}
+                </div>
               </div>
             </div>
           );
