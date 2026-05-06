@@ -6,6 +6,18 @@ import { getToken } from "next-auth/jwt";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+  const isCustomerSetupRequired =
+    Boolean((token as any)?.type === "customer") &&
+    (Boolean((token as any)?.mustChangePassword) || Boolean((token as any)?.mustCompleteProfile));
+
+  // Keep customers on dashboard root until one-time setup is complete.
+  if (isCustomerSetupRequired && pathname !== "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
 
   if (!pathname.startsWith("/staff")) {
     return NextResponse.next();
@@ -20,8 +32,6 @@ export async function middleware(req: NextRequest) {
   if (isLogin) {
     return NextResponse.next();
   }
-
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
   if (!token) {
     const url = req.nextUrl.clone();
@@ -49,5 +59,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/staff/:path*"],
+  matcher: ["/", "/schedule", "/items", "/details", "/confirmation", "/orders/:path*", "/appointments/:path*", "/staff/:path*"],
 };

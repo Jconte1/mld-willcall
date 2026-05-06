@@ -94,7 +94,10 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
         });
         return;
       }
-      toast({ title: "Invite sent", description: "The customer will receive their invite code shortly." });
+      toast({
+        title: "Invite sent",
+        description: "The customer will receive an email to access their dashboard.",
+      });
       setShowInviteDialog(false);
       setInviteCustomerId("");
       setInviteZip("");
@@ -210,9 +213,9 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Resend invite</DialogTitle>
+            <DialogTitle>Send dashboard invite</DialogTitle>
             <DialogDescription>
-              Enter the customer details to resend their invite code.
+              Enter the customer details to send dashboard access.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

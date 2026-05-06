@@ -25,6 +25,8 @@ type CustomerUser = {
   emailVerified?: boolean;
   accountRole?: string | null;
   isDeveloper?: boolean;
+  mustChangePassword?: boolean;
+  mustCompleteProfile?: boolean;
 };
 
 export const authOptions: NextAuthOptions = {

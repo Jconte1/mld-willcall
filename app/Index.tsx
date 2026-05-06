@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signOut, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import {
   Search,
   ArrowRight,
@@ -105,7 +105,7 @@ const DESTRUCTIVE_BUTTON =
 const Index: React.FC = () => {
   const router = useRouter();
   const { updateFormData, formData } = usePickup();
-  const { status, data: session } = useSession();
+  const { status, data: session, update } = useSession();
   const { toast } = useToast();
 
   const user = session?.user as any;
@@ -114,6 +114,8 @@ const Index: React.FC = () => {
   const accountRole = user?.accountRole ?? null;
   const isDeveloper = Boolean(user?.isDeveloper);
   const isAdmin = accountRole === "ADMIN" || isDeveloper;
+  const setupRequired =
+    isCustomer && (Boolean(user?.mustChangePassword) || Boolean(user?.mustCompleteProfile));
 
   const [orderQuery, setOrderQuery] = useState("");
   const [error, setError] = useState("");
@@ -162,6 +164,10 @@ const Index: React.FC = () => {
   const [overrideBaid, setOverrideBaid] = useState("");
   const [activeBaid, setActiveBaid] = useState("");
   const [overrideInput, setOverrideInput] = useState("");
+  const [setupName, setSetupName] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
 
   useEffect(() => {
     if (!syncing) return;
@@ -189,6 +195,23 @@ const Index: React.FC = () => {
       router.replace("/staff");
     }
   }, [status, userType, router]);
+
+  useEffect(() => {
+    if (!setupRequired) return;
+    if (user?.name && user.name !== "Complete Profile") {
+      setSetupName(String(user.name));
+    }
+  }, [setupRequired, user?.name]);
+
+  useEffect(() => {
+    if (!setupRequired) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [setupRequired]);
 
   const effectiveBaid = (overrideBaid || activeBaid || "").trim().toUpperCase();
 
@@ -220,6 +243,75 @@ const Index: React.FC = () => {
     setOverrideInput("");
     if (session?.user?.baid) {
       setActiveBaid(session.user.baid);
+    }
+  };
+
+  const completeCustomerSetup = async () => {
+    if (!setupName.trim()) {
+      toast({ title: "Name required", description: "Please enter your full name." });
+      return;
+    }
+    if (setupPassword.length < 8) {
+      toast({ title: "Password too short", description: "Use at least 8 characters." });
+      return;
+    }
+    if (!/[0-9]/.test(setupPassword) || !/[^A-Za-z0-9]/.test(setupPassword)) {
+      toast({
+        title: "Password requirements",
+        description: "Password must include at least 1 number and 1 symbol.",
+      });
+      return;
+    }
+    if (setupPassword !== setupConfirmPassword) {
+      toast({ title: "Passwords do not match" });
+      return;
+    }
+
+    setSetupSubmitting(true);
+    try {
+      const res = await fetch("/api/customer/complete-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: setupName.trim(), password: setupPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Setup failed",
+          description: data?.message || "Unable to complete account setup.",
+        });
+        return;
+      }
+
+      await update({
+        user: {
+          name: setupName.trim(),
+          mustChangePassword: false,
+          mustCompleteProfile: false,
+        } as any,
+      });
+
+      const relog = await signIn("credentials", {
+        redirect: false,
+        authType: "customer",
+        email: user?.email,
+        password: setupPassword,
+      });
+
+      if (relog?.error) {
+        toast({
+          title: "Password updated",
+          description: "Please sign in with your new password.",
+        });
+        await signOut({ callbackUrl: "/" });
+        return;
+      }
+
+      setSetupPassword("");
+      setSetupConfirmPassword("");
+      router.refresh();
+    } finally {
+      setSetupSubmitting(false);
     }
   };
 
@@ -781,6 +873,52 @@ const Index: React.FC = () => {
           </Suspense>
         ) : (
           <div className="max-w-6xl mx-auto">
+            {setupRequired ? (
+              <Card className="mb-4 border-red-400 bg-white max-w-md mx-auto">
+                <CardHeader className="pb-2">
+                  <CardTitle>Complete Account Setup</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    One-time setup is required before you can continue to other pages.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2.5 pt-0">
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="text-sm font-medium text-foreground">Full name</label>
+                      <Input
+                        value={setupName}
+                        onChange={(event) => setSetupName(event.target.value)}
+                        placeholder="Full name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground">New password</label>
+                      <Input
+                        type="password"
+                        value={setupPassword}
+                        onChange={(event) => setSetupPassword(event.target.value)}
+                        placeholder="New password"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground">Confirm password</label>
+                      <Input
+                        type="password"
+                        value={setupConfirmPassword}
+                        onChange={(event) => setSetupConfirmPassword(event.target.value)}
+                        placeholder="Confirm password"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <Button variant="hero" onClick={completeCustomerSetup} disabled={setupSubmitting}>
+                      {setupSubmitting ? "Saving..." : "Save and Continue"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             {/* Hero */}
             <div className="text-center mb-12 animate-fade-in">
               <div className="mx-auto mb-4">
