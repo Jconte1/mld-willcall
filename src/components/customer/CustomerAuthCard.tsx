@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -44,6 +45,7 @@ function extractEmailFromPrefillToken(token: string): string {
 
 export default function CustomerAuthCard() {
   const router = useRouter();
+  const { status: sessionStatus } = useSession();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
@@ -90,6 +92,7 @@ export default function CustomerAuthCard() {
 
   React.useEffect(() => {
     if (!prefillToken) return;
+    if (sessionStatus === "authenticated") return;
     const token = prefillToken;
     if (PREFILL_TOKENS_COMPLETED.has(token) || PREFILL_TOKENS_IN_FLIGHT.has(token)) {
       return;
@@ -191,7 +194,7 @@ export default function CustomerAuthCard() {
 
     void runAutoOnboarding();
     return;
-  }, [prefillToken, toast, router, loginForm]);
+  }, [prefillToken, toast, router, loginForm, sessionStatus]);
 
   const onLogin = async (values: LoginValues) => {
     setBusy(true);
