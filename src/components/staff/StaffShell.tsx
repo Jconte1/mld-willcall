@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath, appPath } from "@/lib/paths";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -81,7 +83,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
 
     setInviteSubmitting(true);
     try {
-      const res = await fetch("/api/staff/invites/resend", {
+      const res = await fetch(apiPath("/api/staff/invites/resend"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId, billingZip: zip, email }),
@@ -198,7 +200,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 <Button
                   variant="outline"
                   className="bg-white"
-                  onClick={() => signOut({ callbackUrl: "/staff/login" })}
+                  onClick={() => signOut({ callbackUrl: appPath("/staff/login") })}
                 >
                   Sign out
                 </Button>

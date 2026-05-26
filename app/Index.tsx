@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiPath, appPath } from "@/lib/paths";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -269,7 +271,7 @@ const Index: React.FC = () => {
 
     setSetupSubmitting(true);
     try {
-      const res = await fetch("/api/customer/complete-setup", {
+      const res = await fetch(apiPath("/api/customer/complete-setup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: setupName.trim(), password: setupPassword }),
@@ -303,7 +305,7 @@ const Index: React.FC = () => {
           title: "Password updated",
           description: "Please sign in with your new password.",
         });
-        await signOut({ callbackUrl: "/" });
+        await signOut({ callbackUrl: appPath("/") });
         return;
       }
 
@@ -329,7 +331,7 @@ const Index: React.FC = () => {
     });
 
     try {
-      const res = await fetch("/api/customer/orders", {
+      const res = await fetch(apiPath("/api/customer/orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: user.email, baid: baid, userId: user.id }),
@@ -370,7 +372,7 @@ const Index: React.FC = () => {
     setSyncProgress(5);
 
     try {
-      const res = await fetch("/api/customer/sync", {
+      const res = await fetch(apiPath("/api/customer/sync"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: user.email, baid: baid, userId: user.id }),
@@ -555,7 +557,7 @@ const Index: React.FC = () => {
     const user = session?.user as any;
     if (!user?.id || !user?.email) return false;
     setActionError("");
-    const res = await fetch(`/api/customer/pickups/${appointmentId}/cancel`, {
+    const res = await fetch(apiPath(`/api/customer/pickups/${appointmentId}/cancel`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id, email: user.email }),
@@ -592,7 +594,7 @@ const Index: React.FC = () => {
     const allOrders = cancelAppointment.orderNbrs ?? [];
     const remaining = allOrders.filter((orderNbr) => !cancelSelectedOrders.includes(orderNbr));
 
-    const res = await fetch(`/api/customer/pickups/${cancelAppointment.id}/orders`, {
+    const res = await fetch(apiPath(`/api/customer/pickups/${cancelAppointment.id}/orders`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -652,7 +654,7 @@ const Index: React.FC = () => {
     setMembersLoading(true);
     setMembersError("");
     try {
-      const res = await fetch("/api/customer/invites/members", {
+      const res = await fetch(apiPath("/api/customer/invites/members"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
@@ -675,7 +677,7 @@ const Index: React.FC = () => {
     setInvitesLoading(true);
     setInvitesError("");
     try {
-      const res = await fetch("/api/customer/invites/invitations/list", {
+      const res = await fetch(apiPath("/api/customer/invites/invitations/list"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, baid: effectiveBaid }),
@@ -709,7 +711,7 @@ const Index: React.FC = () => {
     }
     setInviteSubmitting(true);
     try {
-      const res = await fetch("/api/customer/invites/invitations", {
+      const res = await fetch(apiPath("/api/customer/invites/invitations"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -748,7 +750,7 @@ const Index: React.FC = () => {
     if (!isAdmin || !user?.id || !effectiveBaid) return;
     setInviteActionId(inviteId);
     try {
-      const res = await fetch("/api/customer/invites/invitations/revoke", {
+      const res = await fetch(apiPath("/api/customer/invites/invitations/revoke"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, baid: effectiveBaid, inviteId }),
@@ -771,7 +773,7 @@ const Index: React.FC = () => {
     if (!isAdmin || !user?.id || !effectiveBaid) return;
     setMemberActionId(targetUserId);
     try {
-      const res = await fetch("/api/customer/invites/members/role", {
+      const res = await fetch(apiPath("/api/customer/invites/members/role"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, baid: effectiveBaid, targetUserId, role }),
@@ -794,7 +796,7 @@ const Index: React.FC = () => {
     if (!isAdmin || !user?.id || !effectiveBaid) return;
     setMemberActionId(targetUserId);
     try {
-      const res = await fetch("/api/customer/invites/members/remove", {
+      const res = await fetch(apiPath("/api/customer/invites/members/remove"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, baid: effectiveBaid, targetUserId }),
@@ -1051,7 +1053,7 @@ const Index: React.FC = () => {
                                   Your session looks out of date. Please sign out and back in to refresh your
                                   account details.
                                 </p>
-                                <Button variant="outline" size="sm" onClick={() => signOut()}>
+                                <Button variant="outline" size="sm" onClick={() => signOut({ callbackUrl: appPath("/") })}>
                                   Sign out
                                 </Button>
                               </div>

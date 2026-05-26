@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath, appPath } from "@/lib/paths";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
@@ -68,7 +70,7 @@ export default function StaffChangePasswordPage() {
         mustChangePassword: session?.user?.mustChangePassword,
       });
       console.info("[staff-change-password] submitting");
-      const res = await fetch("/api/staff/change-password", {
+      const res = await fetch(apiPath("/api/staff/change-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,7 +135,7 @@ export default function StaffChangePasswordPage() {
                   <button
                     type="button"
                     className="text-primary underline"
-                    onClick={() => signOut({ callbackUrl: "/staff/login" })}
+                    onClick={() => signOut({ callbackUrl: appPath("/staff/login") })}
                   >
                     Sign out
                   </button>

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Calendar, Users } from 'lucide-react';
 import { signOut, useSession } from "next-auth/react";
 import BrandMark from "@/components/brand/BrandMark";
+import { appPath } from "@/lib/paths";
 import { cn } from '@/lib/utils';
 
 const Header: React.FC = () => {
@@ -63,7 +64,7 @@ const Header: React.FC = () => {
           {status === "authenticated" ? (
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => signOut({ callbackUrl: appPath("/") })}
               className="hidden sm:inline-flex items-center rounded-full border px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
             >
               Sign out

@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiPath } from "@/lib/paths";
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -177,7 +179,7 @@ export default function OrderDetailPage() {
     setLoading(true);
     setError("");
 
-    fetch("/api/customer/orders/detail", {
+    fetch(apiPath("/api/customer/orders/detail"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -279,7 +281,7 @@ export default function OrderDetailPage() {
     if (!user?.id || !user?.email) return;
     setActionLoading(true);
     setActionError("");
-    const res = await fetch(`/api/customer/pickups/${appointment.id}/cancel`, {
+    const res = await fetch(apiPath(`/api/customer/pickups/${appointment.id}/cancel`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id, email: user.email }),
@@ -330,7 +332,7 @@ export default function OrderDetailPage() {
     const allOrders = appointment.orderNbrs ?? [];
     const remaining = allOrders.filter((orderNbr) => !cancelSelectedOrders.includes(orderNbr));
 
-    const res = await fetch(`/api/customer/pickups/${appointment.id}/orders`, {
+    const res = await fetch(apiPath(`/api/customer/pickups/${appointment.id}/orders`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

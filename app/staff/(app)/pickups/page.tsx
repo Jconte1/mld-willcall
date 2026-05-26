@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import React, { useMemo, useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
@@ -453,7 +455,7 @@ export default function StaffPickupsPage() {
     });
 
     try {
-      const res = await fetch(`/api/staff/pickups/availability?${params.toString()}`);
+      const res = await fetch(apiPath(`/api/staff/pickups/availability?${params.toString()}`));
       const data: DayAvailabilityResponse = await res.json().catch(() => ({}));
       if (res.ok && data.availability) {
         const availabilityMap = new Map<string, DayAvailabilitySlot[]>();
@@ -527,7 +529,7 @@ export default function StaffPickupsPage() {
     };
 
     try {
-      const res = await fetch("/api/staff/pickups/availability", {
+      const res = await fetch(apiPath("/api/staff/pickups/availability"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -559,7 +561,7 @@ export default function StaffPickupsPage() {
       params.set("locationId", selectedLocations[0]);
     }
 
-    const res = await fetch(`/api/staff/pickups?${params.toString()}`);
+    const res = await fetch(apiPath(`/api/staff/pickups?${params.toString()}`));
     const data = await res.json().catch(() => ({}));
     console.info("[staff-pickups] fetch", {
       ok: res.ok,
@@ -590,7 +592,7 @@ export default function StaffPickupsPage() {
     setShipmentEditing(false);
     setShipmentError("");
 
-    const res = await fetch(`/api/staff/pickups/${appointmentId}/items`);
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointmentId}/items`));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setItemsError(data?.message ?? "Unable to load appointment items.");
@@ -762,7 +764,7 @@ export default function StaffPickupsPage() {
         to: day,
         locationId: formData.locationId,
       });
-      const availabilityRes = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
+      const availabilityRes = await fetch(apiPath(`/api/customer/pickups/availability?${params.toString()}`));
       const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
       if (availabilityRes.ok) {
         const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
@@ -775,7 +777,7 @@ export default function StaffPickupsPage() {
         setCreateAvailableStartTimes([]);
       }
 
-      const res = await fetch(`/api/staff/pickups?${params.toString()}`);
+      const res = await fetch(apiPath(`/api/staff/pickups?${params.toString()}`));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setCreateDayAppointments([]);
@@ -967,7 +969,7 @@ export default function StaffPickupsPage() {
   );
 
   const submitCreateAppointment = async (createPayload: Record<string, unknown>) => {
-    const res = await fetch("/api/staff/pickups", {
+    const res = await fetch(apiPath("/api/staff/pickups"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(createPayload),
@@ -1037,7 +1039,7 @@ export default function StaffPickupsPage() {
       })),
     };
 
-    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}/shipments`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${activeAppointment.id}/shipments`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -1080,7 +1082,7 @@ export default function StaffPickupsPage() {
     notify: boolean,
     reason: string
   ) => {
-    const res = await fetch(`/api/staff/pickups/${appointmentId}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointmentId}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1141,7 +1143,7 @@ export default function StaffPickupsPage() {
     setCreateOrderError("");
     try {
       console.info("[staff-create-appointment] lookup start", { orderNbr });
-      const res = await fetch("/api/staff/pickups", {
+      const res = await fetch(apiPath("/api/staff/pickups"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lookupOrder: true, orderNbr }),
@@ -1482,7 +1484,7 @@ export default function StaffPickupsPage() {
 
   const submitItemsUpdate = async (notify: boolean) => {
     if (!activeAppointment || !pendingItemsSave) return;
-    const res = await fetch(`/api/staff/pickups/${activeAppointment.id}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${activeAppointment.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

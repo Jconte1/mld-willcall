@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -40,7 +42,7 @@ function ForgotPasswordContent() {
     setSubmitted(false);
     setMessage("");
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch(apiPath("/api/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...values, type }),

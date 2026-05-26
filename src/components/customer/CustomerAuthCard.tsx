@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -102,7 +104,7 @@ export default function CustomerAuthCard() {
     async function runAutoOnboarding() {
       setAutoOnboarding(true);
       try {
-        const onboardRes = await fetch("/api/customer/auto-register-from-prefill", {
+        const onboardRes = await fetch(apiPath("/api/customer/auto-register-from-prefill"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
@@ -150,7 +152,7 @@ export default function CustomerAuthCard() {
 
         setSyncing(true);
         try {
-          const syncRes = await fetch("/api/acumatica/one-time-sync", {
+          const syncRes = await fetch(apiPath("/api/acumatica/one-time-sync"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -238,7 +240,7 @@ export default function CustomerAuthCard() {
         resendMode === "email"
           ? { orderNbr, email: resendEmail.trim() }
           : { orderNbr, phone: resendPhone };
-      await fetch("/api/public/order-ready/resend", {
+      await fetch(apiPath("/api/public/order-ready/resend"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

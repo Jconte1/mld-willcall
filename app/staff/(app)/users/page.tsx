@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Search, UserPlus } from "lucide-react";
@@ -111,7 +113,7 @@ export default function StaffUsersPage() {
     setLoading(true);
     setError("");
 
-    fetch("/api/staff/users")
+    fetch(apiPath("/api/staff/users"))
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!active) return;
@@ -160,7 +162,7 @@ export default function StaffUsersPage() {
   const handleCreate = async (values: CreateValues) => {
     setCreating(true);
     try {
-      const res = await fetch("/api/staff/users", {
+      const res = await fetch(apiPath("/api/staff/users"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -203,7 +205,7 @@ export default function StaffUsersPage() {
     if (!confirm(`Delete ${email}? This cannot be undone.`)) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/staff/users/${id}`, { method: "DELETE" });
+      const res = await fetch(apiPath(`/api/staff/users/${id}`), { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.message ?? "Unable to delete user.");
@@ -235,7 +237,7 @@ export default function StaffUsersPage() {
     if (!editingId) return;
     setEditing(true);
     try {
-      const res = await fetch(`/api/staff/users/${editingId}`, {
+      const res = await fetch(apiPath(`/api/staff/users/${editingId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

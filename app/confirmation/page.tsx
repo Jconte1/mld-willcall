@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "@/lib/paths";
 import React, { useEffect, useState } from 'react';
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -74,7 +76,7 @@ const ConfirmationPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/customer/pickups", {
+      const res = await fetch(apiPath("/api/customer/pickups"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +230,7 @@ Reference: ${formData.pickupReference}`;
     try {
       const results = await Promise.all(
         appointmentIds.map(async (appointmentId) => {
-          const res = await fetch(`/api/customer/pickups/${appointmentId}/cancel`, {
+          const res = await fetch(apiPath(`/api/customer/pickups/${appointmentId}/cancel`), {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

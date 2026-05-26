@@ -2,10 +2,11 @@
 
 import { useEffect } from "react";
 import { signOut } from "next-auth/react";
+import { appPath } from "@/lib/paths";
 
 export default function StaffLogoutPage() {
   useEffect(() => {
-    signOut({ callbackUrl: "/staff/login" });
+    signOut({ callbackUrl: appPath("/staff/login") });
   }, []);
 
   return null;

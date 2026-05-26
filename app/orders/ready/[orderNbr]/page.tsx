@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format, parseISO } from "date-fns";
@@ -128,7 +130,7 @@ function ReadyContent() {
     setLoading(true);
     setError("");
 
-    fetch(`/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(resolved)}`)
+    fetch(apiPath(`/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(resolved)}`))
       .then((res) => res.json().then((payload) => ({ ok: res.ok, payload })))
       .then(({ ok, payload }) => {
         if (!active) return;

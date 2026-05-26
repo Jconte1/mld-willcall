@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -114,7 +116,7 @@ export default function StaffHomePage() {
       setError("");
       const from = format(new Date(), "yyyy-MM-dd");
       const to = format(addDays(new Date(), 30), "yyyy-MM-dd");
-      const res = await fetch(`/api/staff/pickups?from=${from}&to=${to}`);
+      const res = await fetch(apiPath(`/api/staff/pickups?from=${from}&to=${to}`));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data?.message ?? "Unable to load appointments.");
@@ -218,7 +220,7 @@ export default function StaffHomePage() {
           .filter(Boolean),
       })),
     };
-    const res = await fetch(`/api/staff/pickups/${appointment.id}/shipments`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointment.id}/shipments`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -245,7 +247,7 @@ export default function StaffHomePage() {
 
   const markReady = async (appointment: StaffPickup) => {
     if (isViewer) return;
-    const res = await fetch(`/api/staff/pickups/${appointment.id}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointment.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "Ready", notifyCustomer: true }),
@@ -263,7 +265,7 @@ export default function StaffHomePage() {
 
   const markComplete = async (appointment: StaffPickup) => {
     if (isViewer) return;
-    const res = await fetch(`/api/staff/pickups/${appointment.id}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointment.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "Completed", notifyCustomer: true }),
@@ -288,7 +290,7 @@ export default function StaffHomePage() {
     setItemsOrderNbr(orderNbr);
     setItemsByOrder({});
     setItemsOrderLinesByOrder({});
-    const res = await fetch(`/api/staff/pickups/${appointment.id}/items`);
+    const res = await fetch(apiPath(`/api/staff/pickups/${appointment.id}/items`));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setItemsError(data?.message ?? "Unable to load items.");
@@ -326,7 +328,7 @@ export default function StaffHomePage() {
     if (!cancelTarget) return;
     setCancelSaving(true);
     setCancelError("");
-    const res = await fetch(`/api/staff/pickups/${cancelTarget.id}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${cancelTarget.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -428,7 +430,7 @@ export default function StaffHomePage() {
       patchBody.notifyCustomer = false;
     }
 
-    const res = await fetch(`/api/staff/pickups/${itemsAppointmentId}`, {
+    const res = await fetch(apiPath(`/api/staff/pickups/${itemsAppointmentId}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patchBody),

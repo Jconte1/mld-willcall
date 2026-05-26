@@ -1,5 +1,6 @@
 // components/brand/BrandMark.tsx
 import Image from "next/image";
+import { appPath } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 
 type BrandMarkProps = {
@@ -15,7 +16,7 @@ export default function BrandMark({ className, size = 60 }: BrandMarkProps) {
       style={{ width: size, height: size }}
     >
       <Image
-        src="/brand/MLD-logo-black.png"
+        src={appPath("/brand/MLD-logo-black.png")}
         alt=""
         width={size}
         height={size}

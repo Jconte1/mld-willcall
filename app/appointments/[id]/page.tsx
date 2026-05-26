@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format, addDays, parseISO } from "date-fns";
@@ -77,7 +79,7 @@ function AppointmentContent() {
     setLoading(true);
     setError("");
 
-    fetch(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`)
+    fetch(apiPath(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`))
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!active) return;
@@ -129,7 +131,7 @@ function AppointmentContent() {
   }, [rescheduleOpen, appointment, toast]);
 
   const handleCancel = async () => {
-    const res = await fetch(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`, {
+    const res = await fetch(apiPath(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "cancel" }),
@@ -148,7 +150,7 @@ function AppointmentContent() {
       toast({ title: "Select a new time", description: "Choose valid time slots to continue." });
       return;
     }
-    const res = await fetch(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`, {
+    const res = await fetch(apiPath(`/api/public/appointments/${appointmentId}?token=${encodeURIComponent(token)}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

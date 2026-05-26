@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { PickupProvider } from "@/context/PickupContext";
+import { apiPath } from "@/lib/paths";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -22,7 +23,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <SessionProvider refetchOnWindowFocus={false}>
+    <SessionProvider basePath={apiPath("/api/auth")} refetchOnWindowFocus={false}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <PickupProvider>

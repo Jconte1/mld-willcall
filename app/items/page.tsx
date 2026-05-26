@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -192,7 +194,7 @@ const ItemSelectionPage: React.FC = () => {
             throw new Error(data?.message ?? "Unable to load items.");
           }
         } else {
-          const res = await fetch("/api/customer/orders/detail", {
+          const res = await fetch(apiPath("/api/customer/orders/detail"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

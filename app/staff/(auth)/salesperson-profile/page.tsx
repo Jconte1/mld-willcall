@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath, appPath } from "@/lib/paths";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -74,7 +76,7 @@ export default function SalespersonProfilePage() {
     }
 
     setLoading(true);
-    fetch("/api/staff/profile")
+    fetch(apiPath("/api/staff/profile"))
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         console.info("[salesperson-profile] load", { ok, data });
@@ -95,7 +97,7 @@ export default function SalespersonProfilePage() {
     setSaving(true);
     try {
       console.info("[salesperson-profile] submit");
-      const res = await fetch("/api/staff/profile", {
+      const res = await fetch(apiPath("/api/staff/profile"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,7 +148,7 @@ export default function SalespersonProfilePage() {
                   <button
                     type="button"
                     className="text-primary underline"
-                    onClick={() => signOut({ callbackUrl: "/staff/login" })}
+                    onClick={() => signOut({ callbackUrl: appPath("/staff/login") })}
                   >
                     Sign out
                   </button>

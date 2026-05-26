@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "@/lib/paths";
 import React, { useState, useEffect } from 'react';
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CalendarDays, MapPin } from 'lucide-react';
@@ -68,7 +70,7 @@ const SchedulePage: React.FC = () => {
               from,
               to,
             });
-            const res = await fetch(`/api/customer/pickups/availability?${params.toString()}`);
+            const res = await fetch(apiPath(`/api/customer/pickups/availability?${params.toString()}`));
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
               throw new Error(data?.message ?? "Unable to load availability.");

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "@/lib/paths";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
@@ -58,7 +60,7 @@ export default function CustomerSetupPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/customer/complete-setup", {
+      const res = await fetch(apiPath("/api/customer/complete-setup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), password }),
