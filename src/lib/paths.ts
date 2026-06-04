@@ -10,6 +10,10 @@ export function appPath(path = "/") {
     return APP_BASE_PATH || "/";
   }
 
+  if (APP_BASE_PATH && (normalized === APP_BASE_PATH || normalized.startsWith(`${APP_BASE_PATH}/`))) {
+    return normalized;
+  }
+
   return `${APP_BASE_PATH}${normalized}`;
 }
 

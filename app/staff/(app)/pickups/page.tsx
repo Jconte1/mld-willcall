@@ -338,8 +338,8 @@ export default function StaffPickupsPage() {
   const [createOrderError, setCreateOrderError] = useState("");
   const [createModalError, setCreateModalError] = useState("");
   const [createOrders, setCreateOrders] = useState<StaffCreateOrder[]>([]);
-  const [createDayAppointments, setCreateDayAppointments] = useState<StaffPickup[]>([]);
   const [createAvailableStartTimes, setCreateAvailableStartTimes] = useState<string[] | null>(null);
+  const [createAvailabilityLoading, setCreateAvailabilityLoading] = useState(false);
   const [createOrderSearch, setCreateOrderSearch] = useState<Record<string, string>>({});
   const [prepayOverride, setPrepayOverride] = useState(false);
   const [returnAckOpen, setReturnAckOpen] = useState(false);
@@ -757,37 +757,40 @@ export default function StaffPickupsPage() {
     if (Number.isNaN(parsedDate.getTime())) return;
     const day = format(parsedDate, "yyyy-MM-dd");
 
+    let active = true;
     const load = async () => {
       setCreateAvailableStartTimes(null);
+      setCreateAvailabilityLoading(true);
       const params = new URLSearchParams({
         from: day,
         to: day,
         locationId: formData.locationId,
       });
-      const availabilityRes = await fetch(apiPath(`/api/customer/pickups/availability?${params.toString()}`));
-      const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
-      if (availabilityRes.ok) {
-        const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
-        const options = (dayRow?.slots ?? [])
-          .filter((slot) => slot.available)
-          .map((slot) => hhmmToLabel(slot.startTime))
-          .filter(Boolean);
-        setCreateAvailableStartTimes(options);
-      } else {
-        setCreateAvailableStartTimes([]);
+      try {
+        const availabilityRes = await fetch(apiPath(`/api/customer/pickups/availability?${params.toString()}`));
+        const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
+        if (!active) return;
+        if (availabilityRes.ok) {
+          const dayRow = (availabilityData.availability ?? []).find((row) => row.date === day);
+          const options = (dayRow?.slots ?? [])
+            .filter((slot) => slot.available)
+            .map((slot) => hhmmToLabel(slot.startTime))
+            .filter(Boolean);
+          setCreateAvailableStartTimes(options);
+        } else {
+          setCreateAvailableStartTimes([]);
+        }
+      } catch {
+        if (active) setCreateAvailableStartTimes([]);
+      } finally {
+        if (active) setCreateAvailabilityLoading(false);
       }
-
-      const res = await fetch(apiPath(`/api/staff/pickups?${params.toString()}`));
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setCreateDayAppointments([]);
-        return;
-      }
-      const rows = Array.isArray(data?.pickups) ? (data.pickups as StaffPickup[]) : [];
-      setCreateDayAppointments(rows);
     };
 
     void load();
+    return () => {
+      active = false;
+    };
   }, [dialogOpen, isCreating, formData.locationId, formData.date]);
 
   const availableCreateStartTimeOptions = useMemo(() => {
@@ -804,29 +807,12 @@ export default function StaffPickupsPage() {
       });
     }
 
-    return createStartTimeOptions.filter((option) => {
-      const startAt = parse(`${formData.date} ${option}`, "MM/dd/yyyy h:mm a", new Date());
-      if (Number.isNaN(startAt.getTime())) return false;
-      const endAt = new Date(startAt.getTime() + SLOT_MINUTES * 60_000);
-      if (startAt <= now) return false;
-
-      const blocked = createDayAppointments.some((apt) => {
-        if (!ACTIVE_BLOCKING_STATUSES.includes(apt.status)) return false;
-        if (apt.locationId !== formData.locationId) return false;
-        const aptStart = new Date(apt.startAt);
-        const aptEnd = new Date(apt.endAt);
-        return startAt < aptEnd && endAt > aptStart;
-      });
-
-      return !blocked;
-    });
+    return [];
   }, [
     isCreating,
     createStartTimeOptions,
     formData.date,
     formData.locationId,
-    createDayAppointments,
-    isSalesperson,
     createAvailableStartTimes,
   ]);
 
@@ -1304,8 +1290,8 @@ export default function StaffPickupsPage() {
     setCreateOrderError("");
     setCreateModalError("");
     setCreateOrders([]);
-    setCreateDayAppointments([]);
     setCreateAvailableStartTimes(null);
+    setCreateAvailabilityLoading(false);
     setPrepayOverride(false);
     const start = toIsoLocal(selectedDate);
     const startDate = parseISO(start);
@@ -2048,7 +2034,7 @@ export default function StaffPickupsPage() {
                   <Select
                     value={formData.startTime}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
-                    disabled={isViewer}
+                    disabled={isViewer || (isCreating && createAvailabilityLoading)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select start time" />
@@ -2061,7 +2047,11 @@ export default function StaffPickupsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {isCreating && availableCreateStartTimeOptions.length === 0 ? (
+                  {isCreating && createAvailabilityLoading ? (
+                    <p className="text-xs text-muted-foreground">
+                      Loading available start times...
+                    </p>
+                  ) : isCreating && availableCreateStartTimeOptions.length === 0 ? (
                     <p className="text-xs text-destructive">
                       No available start times for this date/location.
                     </p>
@@ -2564,7 +2554,9 @@ export default function StaffPickupsPage() {
               disabled={
                 isViewer ||
                 (!isCreating && !canEditAppointments) ||
+                (isCreating && createAvailabilityLoading) ||
                 (isCreating && availableCreateStartTimeOptions.length === 0) ||
+                (isCreating && !availableCreateStartTimeOptions.includes(formData.startTime)) ||
                 (isCreating && createPrepayBlocks.length > 0 && !(canUsePrepayOverride && prepayOverride))
               }
             >

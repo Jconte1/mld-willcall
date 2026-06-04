@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/layout/Header";
+import { appPath } from "@/lib/paths";
 
 const schema = z.object({
   email: z
@@ -27,7 +28,6 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function StaffLoginContent() {
-  const router = useRouter();
   const params = useSearchParams();
   const { toast } = useToast();
   const { status, data: session } = useSession();
@@ -52,9 +52,9 @@ function StaffLoginContent() {
         : session.user.mustCompleteProfile
           ? "/staff/salesperson-profile"
           : nextUrl;
-      router.replace(target);
+      window.location.replace(appPath(target));
     }
-  }, [status, session, nextUrl, router]);
+  }, [status, session, nextUrl]);
 
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
@@ -134,17 +134,14 @@ function StaffLoginContent() {
                       variant="hero"
                       className="w-full bg-black text-white hover:bg-black/90"
                       onClick={() => {
-                        router.push("/staff");
-                        setTimeout(() => {
-                          window.location.assign("/staff");
-                        }, 150);
+                        window.location.assign(appPath("/staff"));
                       }}
                     >
                       Go to dashboard
                     </Button>
                   ) : null}
                   <div className="text-center">
-                    <Link href="/forgot-password?type=staff" className="text-sm text-muted-foreground underline">
+                    <Link href={appPath("/forgot-password?type=staff")} className="text-sm text-muted-foreground underline">
                       Forgot password
                     </Link>
                   </div>
