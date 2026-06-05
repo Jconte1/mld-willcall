@@ -141,7 +141,7 @@ function StaffLoginContent() {
                     </Button>
                   ) : null}
                   <div className="text-center">
-                    <Link href={appPath("/forgot-password?type=staff")} className="text-sm text-muted-foreground underline">
+                    <Link href="/forgot-password?type=staff" className="text-sm text-muted-foreground underline">
                       Forgot password
                     </Link>
                   </div>
