@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { appPath } from "./paths";
 
 const STAFF_API_BASE_URL = process.env.STAFF_API_BASE_URL;
 const CUSTOMER_API_BASE_URL = process.env.CUSTOMER_API_BASE_URL;
@@ -32,7 +33,7 @@ type CustomerUser = {
 export const authOptions: NextAuthOptions = {
   pages: {
     // Staff still uses its own login route
-    signIn: "/staff/login",
+    signIn: appPath("/staff/login"),
   },
   session: {
     strategy: "jwt",
