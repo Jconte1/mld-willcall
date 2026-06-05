@@ -11,13 +11,7 @@ const nextConfig = {
     return [
       {
         source: "/",
-        destination: "https://mld.com/willcall",
-        permanent: true,
-        basePath: false,
-      },
-      {
-        source: "/:path*",
-        destination: "https://mld.com/willcall/:path*",
+        destination: "https://www.mld.com/willcall",
         permanent: true,
         basePath: false,
       },
@@ -25,7 +19,6 @@ const nextConfig = {
   },
 
   webpack(config) {
-    // Allow `import url from './file.svg'` to behave like Vite.
     config.module.rules.push({
       test: /\.(svg)$/i,
       type: "asset/resource",
