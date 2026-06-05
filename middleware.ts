@@ -20,17 +20,24 @@ export async function middleware(req: NextRequest) {
     url.hostname = NEW_WILLCALL_HOST;
     url.port = "";
 
-    // Prevent accidental double /willcall if the incoming path already has it.
-    const cleanPath = pathname.startsWith(NEW_WILLCALL_BASE_PATH)
-      ? pathname.slice(NEW_WILLCALL_BASE_PATH.length) || "/"
-      : pathname;
+    let cleanPath = pathname;
+
+    // Strip any accidental existing /willcall prefixes before adding exactly one.
+    while (
+      cleanPath === NEW_WILLCALL_BASE_PATH ||
+      cleanPath.startsWith(`${NEW_WILLCALL_BASE_PATH}/`)
+    ) {
+      cleanPath = cleanPath.slice(NEW_WILLCALL_BASE_PATH.length) || "/";
+    }
 
     url.pathname =
       cleanPath === "/"
         ? NEW_WILLCALL_BASE_PATH
         : `${NEW_WILLCALL_BASE_PATH}${cleanPath}`;
 
-    return NextResponse.redirect(url, 308);
+    // Use 307 while testing so browsers are less likely to cache bad redirects.
+    // Change to 308 later once confirmed working.
+    return NextResponse.redirect(url, 307);
   }
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -78,8 +85,10 @@ export async function middleware(req: NextRequest) {
   // Admin-only routes.
   if (pathname.startsWith("/staff/users") && (token as any).role !== "ADMIN") {
     if (isForbidden) return NextResponse.next();
+
     const url = req.nextUrl.clone();
     url.pathname = "/staff/forbidden";
+
     return NextResponse.rewrite(url, { status: 403 });
   }
 
