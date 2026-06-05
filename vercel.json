@@ -1,0 +1,14 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://www.mld.com/willcall",
+      "permanent": false
+    },
+    {
+      "source": "/((?!willcall).*)",
+      "destination": "https://www.mld.com/willcall/$1",
+      "permanent": false
+    }
+  ]
+}
