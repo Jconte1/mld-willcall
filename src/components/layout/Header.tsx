@@ -8,6 +8,7 @@ import { signOut, useSession } from "next-auth/react";
 import BrandMark from "@/components/brand/BrandMark";
 import { appPath } from "@/lib/paths";
 import { cn } from '@/lib/utils';
+import { withPublicBasePath } from "@/lib/publicPath"
 
 const Header: React.FC = () => {
   const pathname = usePathname() ?? "";
@@ -24,7 +25,7 @@ const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-card/80 backdrop-blur-lg">
       <div className="container flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href={withPublicBasePath("/")} className="flex items-center gap-2 group">
           <BrandMark size={60} className="group-hover:opacity-90 transition-opacity" />
           <span className="font-display text-xl font-semibold text-foreground">
             Will<span className="text-primary">Call</span>
@@ -34,7 +35,7 @@ const Header: React.FC = () => {
         <div className="flex items-center gap-3">
           <nav className="flex items-center gap-1">
             <Link
-              href="/"
+              href={withPublicBasePath("/")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                 scheduleActive

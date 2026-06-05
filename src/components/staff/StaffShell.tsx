@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath, appPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -50,14 +50,14 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
 
     if (status === "authenticated") {
       if (session.user.mustChangePassword && !pathname.startsWith("/staff/change-password")) {
-        router.replace("/staff/change-password");
+        router.replace(withPublicBasePath("/staff/change-password"));
         return;
       }
       if (
         session.user.mustCompleteProfile &&
         !pathname.startsWith("/staff/salesperson-profile")
       ) {
-        router.replace("/staff/salesperson-profile");
+        router.replace(withPublicBasePath("/staff/salesperson-profile"));
       }
     }
   }, [status, session, pathname, router]);
@@ -116,7 +116,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
       <header className="border-b bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="container max-w-none px-6 flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link href="/staff" className="font-semibold tracking-tight ml-6">
+            <Link href={withPublicBasePath("/staff")} className="font-semibold tracking-tight ml-6">
               Dashboard
             </Link>
 
@@ -159,7 +159,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                 </div>
                 {session.user.role === "SALESPERSON" ? (
                   <Link
-                    href="/staff/salesperson-profile"
+                    href={withPublicBasePath("/staff/salesperson-profile")}
                     className={cn(
                       "px-3 py-2 text-sm rounded-md transition-colors border border-input bg-white",
                       pathname.startsWith("/staff/salesperson-profile")
@@ -189,7 +189,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                         if (pathname.startsWith("/staff/pickups")) {
                           window.dispatchEvent(new Event("staff:new-appointment"));
                         } else {
-                          router.push("/staff/pickups");
+                          router.push(withPublicBasePath("/staff/pickups"));
                         }
                       }
                     }}

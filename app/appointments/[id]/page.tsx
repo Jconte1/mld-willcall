@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format, addDays, parseISO } from "date-fns";
@@ -214,7 +214,7 @@ function AppointmentContent() {
       <main className="container py-10">
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button variant="ghost" onClick={() => router.push("/")}>
+            <Button variant="ghost" onClick={() => router.push(withPublicBasePath("/"))}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to scheduling
             </Button>

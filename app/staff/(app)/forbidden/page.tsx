@@ -1,5 +1,5 @@
 "use client";
-
+import { withPublicBasePath } from "@/lib/publicPath";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ export default function StaffForbiddenPage() {
           You don't have permission to access this page.
         </p>
         <Button asChild variant="secondary">
-          <Link href="/staff">Go to Staff Home</Link>
+          <Link href={withPublicBasePath("/staff")}>Go to Staff Home</Link>
         </Button>
       </CardContent>
     </Card>

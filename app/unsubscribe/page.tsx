@@ -2,7 +2,7 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 type UnsubscribePageProps = {
   searchParams?: { status?: string };
 };
@@ -33,7 +33,7 @@ export default function UnsubscribePage({ searchParams }: UnsubscribePageProps) 
             )}
             <div>
               <Button asChild variant="outline">
-                <Link href="/">Go to homepage</Link>
+                <Link href={withPublicBasePath("/")}>Go to homepage</Link>
               </Button>
             </div>
           </CardContent>

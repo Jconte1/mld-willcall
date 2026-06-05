@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -157,7 +157,7 @@ const ItemSelectionPage: React.FC = () => {
 
   useEffect(() => {
     if (!formData.pickupReference || orderNbrs.length === 0) {
-      router.push("/");
+      router.push(withPublicBasePath("/"));
     }
   }, [formData.pickupReference, orderNbrs.length, router]);
 
@@ -569,11 +569,11 @@ const ItemSelectionPage: React.FC = () => {
     }
 
     updateFormData({ selectedItems: selections });
-    router.push("/schedule");
+    router.push(withPublicBasePath("/schedule"));
   };
 
   const handleBack = () => {
-    router.push("/");
+    router.push(withPublicBasePath("/"));
   };
 
   return (
@@ -905,7 +905,7 @@ const ItemSelectionPage: React.FC = () => {
                 setReturnAckOpen(false);
                 setReturnAckChecked(false);
                 setPendingSelections(null);
-                router.push("/schedule");
+                router.push(withPublicBasePath("/schedule"));
               }}
               className={`${CONTINUE_BUTTON} w-full sm:w-auto`}
               disabled={!returnAckChecked}

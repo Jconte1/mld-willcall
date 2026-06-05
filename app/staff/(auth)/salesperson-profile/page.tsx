@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath, appPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -66,12 +66,12 @@ export default function SalespersonProfilePage() {
       mustCompleteProfile: session?.user?.mustCompleteProfile,
     });
     if (status === "unauthenticated") {
-      router.replace("/staff/login");
+      router.replace(withPublicBasePath("/staff/login"));
       return;
     }
     if (status !== "authenticated") return;
     if (session?.user?.role !== "SALESPERSON") {
-      router.replace("/staff");
+      router.replace(withPublicBasePath("/staff"));
       return;
     }
 
@@ -118,7 +118,7 @@ export default function SalespersonProfilePage() {
         await update({ user: { mustCompleteProfile: false } });
       }
       toast({ title: "Profile saved", description: "Thanks! You're all set." });
-      router.replace("/staff/pickups");
+      router.replace(withPublicBasePath("/staff/pickups"));
       router.refresh();
     } catch (err: any) {
       toast({ title: "Save failed", description: err?.message || "Please try again." });

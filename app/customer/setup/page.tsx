@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
@@ -25,11 +25,11 @@ export default function CustomerSetupPage() {
   useEffect(() => {
     if (status !== "authenticated") return;
     if (user?.type !== "customer") {
-      router.replace("/");
+      router.replace(withPublicBasePath("/"));
       return;
     }
     if (!user?.mustChangePassword && !user?.mustCompleteProfile) {
-      router.replace("/");
+      router.replace(withPublicBasePath("/"));
       return;
     }
     if (user?.name && user.name !== "Complete Profile") {
@@ -94,11 +94,11 @@ export default function CustomerSetupPage() {
           title: "Password updated",
           description: "Please sign in with your new password.",
         });
-        router.replace("/");
+        router.replace(withPublicBasePath("/"));
         return;
       }
 
-      router.replace("/");
+      router.replace(withPublicBasePath("/"));
     } finally {
       setSubmitting(false);
     }

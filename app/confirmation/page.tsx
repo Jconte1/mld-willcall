@@ -14,7 +14,7 @@ import ProgressSteps from '@/components/scheduling/ProgressSteps';
 import { usePickup } from '@/context/PickupContext';
 import { pickupLocations } from '@/lib/pickupLocations';
 import { useToast } from '@/hooks/use-toast';
-
+import { withPublicBasePath } from "@/lib/publicPath"
 const steps = [
   { id: 1, name: 'Location' },
   { id: 2, name: 'Item Selection' },
@@ -254,7 +254,7 @@ Reference: ${formData.pickupReference}`;
         });
       }
       resetFormData();
-      router.push("/");
+      router.push(withPublicBasePath("/"));
     } catch (err: any) {
       toast({
         title: "Cancellation failed",

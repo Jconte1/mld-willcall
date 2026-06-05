@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -402,7 +402,7 @@ export default function OrderDetailPage() {
         },
       ],
     });
-    router.push("/schedule");
+    router.push(withPublicBasePath("/schedule"));
   };
 
   return (
@@ -412,7 +412,7 @@ export default function OrderDetailPage() {
       <main className="container py-8 md:py-12">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button variant="ghost" onClick={() => router.push("/")}>
+            <Button variant="ghost" onClick={() => router.push(withPublicBasePath("/"))}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to scheduling
             </Button>
@@ -654,7 +654,7 @@ export default function OrderDetailPage() {
               </Card>
 
               <div className="flex justify-start">
-                <Button variant="ghost" onClick={() => router.push("/")}>
+                <Button variant="ghost" onClick={() => router.push(withPublicBasePath("/"))}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to scheduling
                 </Button>

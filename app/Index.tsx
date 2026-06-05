@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath, appPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -194,7 +194,7 @@ const Index: React.FC = () => {
   useEffect(() => {
     // If a staff member lands on the customer home, send them to staff.
     if (status === "authenticated" && userType === "staff") {
-      router.replace("/staff");
+      router.replace(withPublicBasePath("/staff"));
     }
   }, [status, userType, router]);
 
@@ -530,7 +530,7 @@ const Index: React.FC = () => {
       selectedItems: filteredSelections,
     });
 
-    router.push("/items");
+    router.push(withPublicBasePath("/items"));
   };
 
 
@@ -646,7 +646,7 @@ const Index: React.FC = () => {
       ],
       selectedItems: [],
     });
-    router.push("/items");
+    router.push(withPublicBasePath("/items"));
   };
 
   const fetchMembers = async () => {

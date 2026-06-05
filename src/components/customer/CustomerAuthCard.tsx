@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -176,7 +176,7 @@ export default function CustomerAuthCard() {
           setSyncing(false);
         }
 
-        router.replace("/");
+        router.replace(withPublicBasePath("/"));
         router.refresh();
         PREFILL_TOKENS_COMPLETED.add(token);
       } catch (err) {
@@ -338,7 +338,7 @@ export default function CustomerAuthCard() {
                 {busy ? "Signing in..." : "Sign in"}
               </Button>
               <div className="text-center">
-                <Link href="/forgot-password?type=customer" className="text-xs text-muted-foreground underline">
+                <Link href={withPublicBasePath("/forgot-password?type=customer")} className="text-xs text-muted-foreground underline">
                   Forgot password
                 </Link>
               </div>

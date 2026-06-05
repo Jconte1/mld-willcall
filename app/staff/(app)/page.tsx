@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -95,7 +95,7 @@ export default function StaffHomePage() {
 
   useEffect(() => {
     if (session?.user?.role === "VIEWER" || session?.user?.role === "SALESPERSON") {
-      router.replace("/staff/pickups");
+      router.replace(withPublicBasePath("/staff/pickups"));
     }
   }, [router, session?.user?.role]);
 
@@ -485,7 +485,7 @@ export default function StaffHomePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Link href="/staff/pickups" className="block">
+          <Link href={withPublicBasePath("/staff/pickups")} className="block">
             <Card className="hover:shadow-md transition-shadow">
               <CardHeader>
                 <CardTitle>Pickups</CardTitle>
@@ -497,7 +497,7 @@ export default function StaffHomePage() {
           </Link>
 
           {session?.user?.role === "ADMIN" && (
-            <Link href="/staff/users" className="block">
+            <Link href={withPublicBasePath("/staff/users")} className="block">
               <Card className="hover:shadow-md transition-shadow">
                 <CardHeader>
                   <CardTitle>Users</CardTitle>
@@ -518,7 +518,7 @@ export default function StaffHomePage() {
                 Track appointments that need shipments and mark them ready when pulled.
               </p>
             </div>
-            <Link href="/staff/pickups" className="text-sm text-primary underline">
+           <Link href={withPublicBasePath("/staff/pickups")} className="text-sm text-primary underline">
               Open calendar
             </Link>
           </div>

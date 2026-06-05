@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath, appPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
@@ -50,7 +50,7 @@ export default function StaffChangePasswordPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace("/staff/login");
+      router.replace(withPublicBasePath("/staff/login"));
       return;
     }
     if (status === "authenticated" && session?.user?.mustChangePassword === false) {

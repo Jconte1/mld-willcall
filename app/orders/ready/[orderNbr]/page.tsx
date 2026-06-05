@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format, parseISO } from "date-fns";
@@ -216,7 +216,7 @@ function ReadyContent() {
       smsOptIn,
     });
 
-    router.push("/items");
+    router.push(withPublicBasePath("/items"));
   };
 
   if (loading) {

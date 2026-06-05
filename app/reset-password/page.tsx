@@ -1,7 +1,7 @@
 "use client";
 
 import { apiPath } from "@/lib/paths";
-
+import { withPublicBasePath } from "@/lib/publicPath";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -84,7 +84,7 @@ function ResetPasswordContent() {
               {!token ? (
                 <div className="space-y-3">
                   <p className="text-sm text-destructive">Reset link is missing or invalid.</p>
-                  <Link href="/forgot-password" className="text-sm underline">
+                  <Link href={withPublicBasePath("/forgot-password")} className="text-sm underline">
                     Request a new link
                   </Link>
                 </div>
