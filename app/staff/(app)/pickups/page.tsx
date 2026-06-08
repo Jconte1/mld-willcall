@@ -767,7 +767,7 @@ export default function StaffPickupsPage() {
         locationId: formData.locationId,
       });
       try {
-        const availabilityRes = await fetch(apiPath(`/api/customer/pickups/availability?${params.toString()}`));
+        const availabilityRes = await fetch(apiPath(`/api/staff/pickups/availability?${params.toString()}`));
         const availabilityData: DayAvailabilityResponse = await availabilityRes.json().catch(() => ({}));
         if (!active) return;
         if (availabilityRes.ok) {
