@@ -187,7 +187,7 @@ const ItemSelectionPage: React.FC = () => {
             throw new Error("Missing order-ready token.");
           }
           const res = await fetch(
-            `/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(orderReadyToken)}`
+            apiPath(`/api/public/order-ready/${orderNbr}?token=${encodeURIComponent(orderReadyToken)}`)
           );
           data = await res.json().catch(() => ({}));
           if (!res.ok) {
