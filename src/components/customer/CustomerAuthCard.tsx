@@ -1,7 +1,6 @@
 "use client";
 
-import { apiPath } from "@/lib/paths";
-import { withPublicBasePath } from "@/lib/publicPath"
+import { apiPath, appPath } from "@/lib/paths";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -103,6 +102,7 @@ export default function CustomerAuthCard() {
 
     async function runAutoOnboarding() {
       setAutoOnboarding(true);
+      let failureTitle = "Setup link issue";
       try {
         const onboardRes = await fetch(apiPath("/api/customer/auto-register-from-prefill"), {
           method: "POST",
@@ -121,8 +121,8 @@ export default function CustomerAuthCard() {
             setAutoOnboarding(false);
             setSyncing(false);
             const target = existingEmail
-              ? `/?email=${encodeURIComponent(existingEmail)}&notice=account-exists`
-              : "/?notice=account-exists";
+              ? appPath(`/?email=${encodeURIComponent(existingEmail)}&notice=account-exists`)
+              : appPath("/?notice=account-exists");
             if (typeof window !== "undefined") {
               window.location.replace(target);
             } else {
@@ -140,6 +140,7 @@ export default function CustomerAuthCard() {
           throw new Error("Missing account credentials.");
         }
 
+        failureTitle = "Sign-in issue";
         const loginRes = await signIn("credentials", {
           redirect: false,
           authType: "customer",
@@ -151,6 +152,7 @@ export default function CustomerAuthCard() {
         }
 
         setSyncing(true);
+        failureTitle = "Sync issue";
         try {
           const syncRes = await fetch(apiPath("/api/acumatica/one-time-sync"), {
             method: "POST",
@@ -176,13 +178,13 @@ export default function CustomerAuthCard() {
           setSyncing(false);
         }
 
-        router.replace(withPublicBasePath("/"));
+        router.replace(appPath("/"));
         router.refresh();
         PREFILL_TOKENS_COMPLETED.add(token);
       } catch (err) {
         PREFILL_TOKENS_IN_FLIGHT.delete(token);
         toast({
-          title: "Setup link issue",
+          title: failureTitle,
           description:
             err instanceof Error && err.message
               ? err.message
@@ -338,7 +340,7 @@ export default function CustomerAuthCard() {
                 {busy ? "Signing in..." : "Sign in"}
               </Button>
               <div className="text-center">
-                <Link href={withPublicBasePath("/forgot-password?type=customer")} className="text-xs text-muted-foreground underline">
+                <Link href={appPath("/forgot-password?type=customer")} className="text-xs text-muted-foreground underline">
                   Forgot password
                 </Link>
               </div>
