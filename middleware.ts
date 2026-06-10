@@ -40,6 +40,7 @@ export async function middleware(req: NextRequest) {
 
   const appPathname = withoutBasePath(pathname);
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const staffPath = appPathname === "/staff" || appPathname.startsWith("/staff/");
 
   const isCustomerSetupRequired =
     Boolean((token as any)?.type === "customer") &&
@@ -47,13 +48,11 @@ export async function middleware(req: NextRequest) {
       Boolean((token as any)?.mustCompleteProfile));
 
   // Keep customers on dashboard root until one-time setup is complete.
-  if (isCustomerSetupRequired && appPathname !== "/") {
+  if (!staffPath && isCustomerSetupRequired && appPathname !== "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
   }
-
-  const staffPath = appPathname === "/staff" || appPathname.startsWith("/staff/");
 
   if (!staffPath) {
     return NextResponse.next();
@@ -69,7 +68,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!token) {
+  if (!token || (token as any).type !== "staff") {
     const url = req.nextUrl.clone();
     url.pathname = "/staff/login";
     url.searchParams.set("next", appPathname || "/");
