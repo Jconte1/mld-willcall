@@ -39,6 +39,10 @@ export async function middleware(req: NextRequest) {
   }
 
   const appPathname = withoutBasePath(pathname);
+  if (appPathname === "/api" || appPathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const staffPath = appPathname === "/staff" || appPathname.startsWith("/staff/");
 
