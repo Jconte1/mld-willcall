@@ -141,6 +141,7 @@ type LayoutItem = StaffPickup & {
 const START_HOUR = 7;
 const END_HOUR = 17;
 const SLOT_MINUTES = 15;
+const DENVER_TZ = "America/Denver";
 const SLOT_HEIGHT_WEEK = 64;
 const SLOT_HEIGHT_DAY = 72;
 const SHIPMENT_FORMAT = /^SMT\d{7}$/;
@@ -168,10 +169,6 @@ const STATUS_OPTIONS: AppointmentStatus[] = [
   "Cancelled",
 ];
 
-function toMinutes(date: Date) {
-  return date.getHours() * 60 + date.getMinutes();
-}
-
 function minutesToLabel(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -184,10 +181,57 @@ function toIsoLocal(date: Date) {
   return date.toISOString();
 }
 
-function toIsoLocalFromDateAndTime(dateStr: string, timeStr: string) {
-  const parsed = parse(`${dateStr} ${timeStr}`, "MM/dd/yyyy h:mm a", new Date());
+function toAppointmentDate(dateStr: string) {
+  const parsed = parse(dateStr, "MM/dd/yyyy", new Date());
   if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toISOString();
+  return format(parsed, "yyyy-MM-dd");
+}
+
+function toAppointmentTime(timeStr: string) {
+  const parsed = parse(timeStr, "h:mm a", new Date());
+  if (Number.isNaN(parsed.getTime())) return "";
+  return format(parsed, "HH:mm");
+}
+
+function appointmentDateInDenver(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: DENVER_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(parseISO(value));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function appointmentTimeInDenver(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: DENVER_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(parseISO(value));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
+}
+
+function appointmentMinutesInDenver(value: string) {
+  const [hours, minutes] = appointmentTimeInDenver(value).split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function appointmentDateLabelInDenver(value: string) {
+  const [year, month, day] = appointmentDateInDenver(value).split("-");
+  return `${month}/${day}/${year}`;
+}
+
+function appointmentTimeLabelInDenver(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: DENVER_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(parseISO(value));
 }
 
 function addMinutesToTimeLabel(timeStr: string, minutes: number) {
@@ -270,10 +314,8 @@ function layoutAppointments(dayAppointments: StaffPickup[], slotHeight: number) 
 
     const columnCount = columns.length;
     for (const apt of group) {
-      const start = new Date(apt.startAt);
-      const end = new Date(apt.endAt);
-      const startMinutes = Math.max(toMinutes(start), START_HOUR * 60);
-      const endMinutes = Math.min(toMinutes(end), END_HOUR * 60);
+      const startMinutes = Math.max(appointmentMinutesInDenver(apt.startAt), START_HOUR * 60);
+      const endMinutes = Math.min(appointmentMinutesInDenver(apt.endAt), END_HOUR * 60);
       const duration = Math.max(endMinutes - startMinutes, SLOT_MINUTES);
       positioned.push({
         ...apt,
@@ -703,7 +745,7 @@ export default function StaffPickupsPage() {
   const appointmentsByDay = useMemo(() => {
     const map = new Map<string, StaffPickup[]>();
     filteredAppointments.forEach((apt) => {
-      const dateKey = format(parseISO(apt.startAt), "yyyy-MM-dd");
+      const dateKey = appointmentDateInDenver(apt.startAt);
       const list = map.get(dateKey) ?? [];
       list.push(apt);
       map.set(dateKey, list);
@@ -716,7 +758,7 @@ export default function StaffPickupsPage() {
     appointments
       .filter((apt) => ACTIVE_BLOCKING_STATUSES.includes(apt.status))
       .forEach((apt) => {
-        const dateKey = format(parseISO(apt.startAt), "yyyy-MM-dd");
+        const dateKey = appointmentDateInDenver(apt.startAt);
         const list = map.get(dateKey) ?? [];
         list.push(apt);
         map.set(dateKey, list);
@@ -1048,11 +1090,20 @@ export default function StaffPickupsPage() {
   };
 
   const hasNotifiableChange = (appointment: StaffPickup, payload: Record<string, any>, orderNbrs: string[]) => {
+    const appointmentDateChanged =
+      payload.appointmentDate && payload.appointmentDate !== appointmentDateInDenver(appointment.startAt);
+    const appointmentStartTimeChanged =
+      payload.appointmentStartTime && payload.appointmentStartTime !== appointmentTimeInDenver(appointment.startAt);
+    const appointmentEndTimeChanged =
+      payload.appointmentEndTime && payload.appointmentEndTime !== appointmentTimeInDenver(appointment.endAt);
     const timeChanged =
-      payload.startAt &&
-      payload.endAt &&
-      (new Date(payload.startAt).getTime() !== new Date(appointment.startAt).getTime() ||
-        new Date(payload.endAt).getTime() !== new Date(appointment.endAt).getTime());
+      appointmentDateChanged ||
+      appointmentStartTimeChanged ||
+      appointmentEndTimeChanged ||
+      (payload.startAt &&
+        payload.endAt &&
+        (new Date(payload.startAt).getTime() !== new Date(appointment.startAt).getTime() ||
+          new Date(payload.endAt).getTime() !== new Date(appointment.endAt).getTime()));
     const locationChanged = payload.locationId && payload.locationId !== appointment.locationId;
     const statusChanged = payload.status && payload.status !== appointment.status;
     const existingOrders = appointment.orders.map((o) => o.orderNbr);
@@ -1091,17 +1142,15 @@ export default function StaffPickupsPage() {
     setActiveAppointment(appointment);
     setIsCreating(false);
     setShipmentEditing(appointment.status !== "Ready");
-    const startDate = parseISO(appointment.startAt);
-    const endDate = parseISO(appointment.endAt);
     setFormData({
       locationId: appointment.locationId,
       customerEmail: appointment.customerEmail,
       customerFirstName: appointment.customerFirstName,
       customerLastName: appointment.customerLastName ?? "",
       customerPhone: appointment.customerPhone ?? "",
-      date: format(startDate, "MM/dd/yyyy"),
-      startTime: format(startDate, "h:mm a"),
-      endTime: format(endDate, "h:mm a"),
+      date: appointmentDateLabelInDenver(appointment.startAt),
+      startTime: appointmentTimeLabelInDenver(appointment.startAt),
+      endTime: appointmentTimeLabelInDenver(appointment.endAt),
       status: appointment.status,
       orderNbrs: appointment.orders.map((o) => o.orderNbr).join(", "),
     });
@@ -1319,9 +1368,10 @@ export default function StaffPickupsPage() {
       setError("Viewer access is read-only.");
       return;
     }
-    const startAt = toIsoLocalFromDateAndTime(formData.date, formData.startTime);
     const computedEndTime = isCreating ? addMinutesToTimeLabel(formData.startTime, SLOT_MINUTES) : formData.endTime;
-    const endAt = toIsoLocalFromDateAndTime(formData.date, computedEndTime);
+    const appointmentDate = toAppointmentDate(formData.date);
+    const appointmentStartTime = toAppointmentTime(formData.startTime);
+    const appointmentEndTime = toAppointmentTime(computedEndTime);
     const orderNbrs = normalizeOrderNbrs(formData.orderNbrs);
     const payload = {
       locationId: formData.locationId,
@@ -1329,8 +1379,9 @@ export default function StaffPickupsPage() {
       customerFirstName: formData.customerFirstName,
       customerLastName: formData.customerLastName || undefined,
       customerPhone: formData.customerPhone || undefined,
-      startAt,
-      endAt,
+      appointmentDate,
+      appointmentStartTime,
+      appointmentEndTime,
       status: isCreating && isSalesperson ? "Scheduled" : formData.status,
       orderNbrs,
     };
@@ -1339,8 +1390,9 @@ export default function StaffPickupsPage() {
       setCreateModalError("");
       console.info("[staff-create-appointment] create submit start", {
         locationId: payload.locationId,
-        startAt: payload.startAt,
-        endAt: payload.endAt,
+        appointmentDate: payload.appointmentDate,
+        appointmentStartTime: payload.appointmentStartTime,
+        appointmentEndTime: payload.appointmentEndTime,
         customerEmail: payload.customerEmail,
         orderCount: createOrders.length,
         selectedGroupCount: selectedItems.length,
@@ -1378,8 +1430,9 @@ export default function StaffPickupsPage() {
     if (!activeAppointment) return;
     const updateBody = {
       status: payload.status,
-      startAt: payload.startAt,
-      endAt: payload.endAt,
+      appointmentDate: payload.appointmentDate,
+      appointmentStartTime: payload.appointmentStartTime,
+      appointmentEndTime: payload.appointmentEndTime,
       locationId: payload.locationId,
       customerFirstName: payload.customerFirstName,
       customerLastName: payload.customerLastName ?? null,
@@ -1502,13 +1555,14 @@ export default function StaffPickupsPage() {
 
     const duration = (new Date(appointment.endAt).getTime() - new Date(appointment.startAt).getTime()) / 60000;
 
-    const start = new Date(day);
-    start.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
-    const end = new Date(start.getTime() + duration * 60_000);
+    const appointmentDate = format(day, "yyyy-MM-dd");
+    const appointmentStartTime = minutesToHhmm(startMinutes);
+    const appointmentEndTime = minutesToHhmm(startMinutes + duration);
 
     const updateBody = {
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
+      appointmentDate,
+      appointmentStartTime,
+      appointmentEndTime,
     };
 
     if (hasNotifiableChange(appointment, updateBody, appointment.orders.map((o) => o.orderNbr))) {
@@ -1530,10 +1584,8 @@ export default function StaffPickupsPage() {
   const buildFallbackDaySlots = (dateKey: string, dayAppointments: StaffPickup[]) => {
     const blocked = new Set<string>();
     for (const appointment of dayAppointments) {
-      const start = parseISO(appointment.startAt);
-      const end = parseISO(appointment.endAt);
-      let minutes = start.getHours() * 60 + start.getMinutes();
-      const endMinutes = end.getHours() * 60 + end.getMinutes();
+      let minutes = appointmentMinutesInDenver(appointment.startAt);
+      const endMinutes = appointmentMinutesInDenver(appointment.endAt);
       while (minutes < endMinutes) {
         blocked.add(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
         minutes += SLOT_MINUTES;
@@ -1573,10 +1625,8 @@ export default function StaffPickupsPage() {
           const slotTimeRange = formatSlotTimeRange(slot);
           const occupiedSlots = new Set<string>();
           for (const appointment of blockingAppointments) {
-            const appointmentStart = parseISO(appointment.startAt);
-            const appointmentEnd = parseISO(appointment.endAt);
-            const start = appointmentStart.getHours() * 60 + appointmentStart.getMinutes();
-            const end = appointmentEnd.getHours() * 60 + appointmentEnd.getMinutes();
+            const start = appointmentMinutesInDenver(appointment.startAt);
+            const end = appointmentMinutesInDenver(appointment.endAt);
             for (let minute = start; minute < end; minute += SLOT_MINUTES) {
               occupiedSlots.add(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
             }
@@ -1696,7 +1746,7 @@ export default function StaffPickupsPage() {
               </div>
               {showTime ? (
                 <div className={cn("mt-1 text-muted-foreground", isWeek ? "text-[10px] leading-tight" : "text-[11px]")}>
-                  {format(parseISO(apt.startAt), "h:mm a")} - {format(parseISO(apt.endAt), "h:mm a")}
+                  {appointmentTimeLabelInDenver(apt.startAt)} - {appointmentTimeLabelInDenver(apt.endAt)}
                 </div>
               ) : null}
               {showOrders ? (
