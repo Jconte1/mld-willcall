@@ -1,6 +1,6 @@
 "use client";
 
-import { apiPath, appPath } from "@/lib/paths";
+import { apiPath } from "@/lib/paths";
 import { withPublicBasePath } from "@/lib/publicPath";
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -66,8 +66,8 @@ function ResetPasswordContent() {
       const resolvedType = data?.type === "staff" || data?.type === "customer" ? data.type : resetType;
       const destination =
         resolvedType === "staff"
-          ? appPath("/staff/login?reset=success")
-          : appPath("/?reset=success");
+          ? withPublicBasePath("/staff/login?reset=success")
+          : withPublicBasePath("/?reset=success");
       setTimeout(() => router.push(destination), 1200);
     } finally {
       setIsSubmitting(false);
