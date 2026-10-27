@@ -49,6 +49,10 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
     }
 
     if (status === "authenticated") {
+      if (session.user.type === "staff" && session.user.isActive === false) {
+        void signOut({ callbackUrl: appPath("/staff/login") });
+        return;
+      }
       if (session.user.mustChangePassword && !pathname.startsWith("/staff/change-password")) {
         router.replace(withPublicBasePath("/staff/change-password"));
         return;

@@ -23,7 +23,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <SessionProvider basePath={apiPath("/api/auth")} refetchOnWindowFocus={false}>
+    <SessionProvider basePath={apiPath("/api/auth")} refetchOnWindowFocus refetchInterval={60}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <PickupProvider>

@@ -433,7 +433,7 @@ export default function StaffUsersPage() {
                       })}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Staff can manage pickups for their locations. Viewer is read-only. Admin can manage everything.
+                      Location access applies to every role, including Admin. Viewer is read-only.
                     </p>
                     <FormMessage />
                   </FormItem>
@@ -540,7 +540,7 @@ export default function StaffUsersPage() {
                       })}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Staff can manage pickups for their locations. Viewer is read-only. Admin can manage everything.
+                      Location access applies to every role, including Admin. Viewer is read-only.
                     </p>
                     <FormMessage />
                   </FormItem>

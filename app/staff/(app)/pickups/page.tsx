@@ -2,7 +2,7 @@
 
 import { apiPath } from "@/lib/paths";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { addDays, endOfWeek, format, isSameDay, parse, parseISO, startOfWeek } from "date-fns";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
@@ -347,6 +347,9 @@ export default function StaffPickupsPage() {
   const [appointments, setAppointments] = useState<StaffPickup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const appointmentSaveInFlight = useRef(false);
+  const [appointmentSaving, setAppointmentSaving] = useState(false);
+  const [appointmentSaveError, setAppointmentSaveError] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<AppointmentStatus[]>(() =>
     STATUS_OPTIONS.filter((status) => status !== "Cancelled")
@@ -455,19 +458,34 @@ export default function StaffPickupsPage() {
   }, [rangeStart, selectedDate, view]);
 
   const accessibleLocations = useMemo(() => {
-    if (session?.user?.role === "ADMIN") {
-      return pickupLocations.map((loc) => loc.id);
-    }
     const locationAccess = session?.user?.locationAccess ?? [];
     if (!locationAccess.length) return [];
     return locationAccess;
   }, [session?.user?.locationAccess, session?.user?.role]);
 
   useEffect(() => {
-    if (!selectedLocations.length && accessibleLocations.length) {
-      setSelectedLocations(canEditAppointments ? [accessibleLocations[0]] : accessibleLocations);
-    }
-  }, [accessibleLocations, canEditAppointments, selectedLocations.length]);
+    const revoked = activeAppointment
+      ? !accessibleLocations.includes(activeAppointment.locationId)
+      : dialogOpen && !accessibleLocations.includes(formData.locationId);
+    if (!revoked) return;
+    setDialogOpen(false);
+    setNotifyDialogOpen(false);
+    setItemsNotifyOpen(false);
+    setActiveAppointment(null);
+    setPendingUpdate(null);
+    setPendingItemsSave(null);
+    setSelectedItems([]);
+    setOrderLinesByOrder({});
+    setShipmentDrafts({});
+  }, [accessibleLocations, activeAppointment, dialogOpen, formData.locationId]);
+
+  useEffect(() => {
+    setSelectedLocations((previous) => {
+      const permitted = previous.filter((id) => accessibleLocations.includes(id));
+      const next = permitted.length ? permitted : canEditAppointments ? accessibleLocations.slice(0, 1) : accessibleLocations;
+      return previous.join("|") === next.join("|") ? previous : next;
+    });
+  }, [accessibleLocations, canEditAppointments]);
 
   const locationSelectValue = useMemo(() => {
     if (accessibleLocations.length <= 1) return accessibleLocations[0] ?? "";
@@ -729,7 +747,7 @@ export default function StaffPickupsPage() {
   }, [shouldOpenNew, canCreate]);
 
   const filteredAppointments = useMemo(() => {
-    let rows = appointments;
+    let rows = appointments.filter((apt) => accessibleLocations.includes(apt.locationId));
     const showAllLocations = isAdmin && selectedLocations.length === accessibleLocations.length;
     if (selectedLocations.length && !showAllLocations) {
       rows = rows.filter((apt) => selectedLocations.includes(apt.locationId));
@@ -740,7 +758,7 @@ export default function StaffPickupsPage() {
       rows = [];
     }
     return rows;
-  }, [appointments, selectedLocations, selectedStatuses]);
+  }, [appointments, selectedLocations, selectedStatuses, accessibleLocations, isAdmin]);
 
   const appointmentsByDay = useMemo(() => {
     const map = new Map<string, StaffPickup[]>();
@@ -997,23 +1015,33 @@ export default function StaffPickupsPage() {
   );
 
   const submitCreateAppointment = async (createPayload: Record<string, unknown>) => {
-    const res = await fetch(apiPath("/api/staff/pickups"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(createPayload),
-    });
-    const data = await res.json().catch(() => ({}));
-    console.info("[staff-create-appointment] create response", {
-      status: res.status,
-      ok: res.ok,
-      message: data?.message,
-      pickupId: data?.pickup?.id,
-    });
-    if (res.ok) {
-      setDialogOpen(false);
-      fetchAppointments();
-    } else {
-      setCreateModalError(data?.message ?? "Unable to create appointment.");
+    if (appointmentSaveInFlight.current) return;
+    appointmentSaveInFlight.current = true;
+    setAppointmentSaving(true);
+    try {
+      const res = await fetch(apiPath("/api/staff/pickups"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createPayload),
+      });
+      const data = await res.json().catch(() => ({}));
+      console.info("[staff-create-appointment] create response", {
+        status: res.status,
+        ok: res.ok,
+        message: data?.message,
+        pickupId: data?.pickup?.id,
+      });
+      if (res.ok) {
+        setDialogOpen(false);
+        fetchAppointments();
+      } else {
+        setCreateModalError(data?.message ?? "Unable to create appointment.");
+      }
+    } catch {
+      setCreateModalError("Unable to confirm the appointment was created. Refresh the calendar before trying again.");
+    } finally {
+      appointmentSaveInFlight.current = false;
+      setAppointmentSaving(false);
     }
   };
 
@@ -1119,26 +1147,42 @@ export default function StaffPickupsPage() {
     notify: boolean,
     reason: string
   ) => {
-    const res = await fetch(apiPath(`/api/staff/pickups/${appointmentId}`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...body,
-        notifyCustomer: notify,
-        cancelReason: reason || undefined,
-      }),
-    });
-    if (res.ok) {
-      setDialogOpen(false);
-      fetchAppointments();
-    } else {
-      setError("Unable to update appointment.");
+    if (appointmentSaveInFlight.current) return false;
+    appointmentSaveInFlight.current = true;
+    setAppointmentSaving(true);
+    setAppointmentSaveError("");
+    try {
+      const res = await fetch(apiPath(`/api/staff/pickups/${appointmentId}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          notifyCustomer: notify,
+          cancelReason: reason || undefined,
+        }),
+      });
+      if (res.ok) {
+        setDialogOpen(false);
+        fetchAppointments();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const message = data?.message ?? "Unable to update appointment.";
+        setError(message);
+        setAppointmentSaveError(message);
+      }
+      return res.ok;
+    } catch {
+      setAppointmentSaveError("Unable to save changes. Check your connection and try again.");
+      return false;
+    } finally {
+      appointmentSaveInFlight.current = false;
+      setAppointmentSaving(false);
     }
-    return res.ok;
   };
 
   const handleOpenEdit = (appointment: StaffPickup) => {
     if (!canEditAppointments) return;
+    setAppointmentSaveError("");
     setActiveAppointment(appointment);
     setIsCreating(false);
     setShipmentEditing(appointment.status !== "Ready");
@@ -1321,6 +1365,7 @@ export default function StaffPickupsPage() {
   };
 
   const handleOpenCreate = () => {
+    setAppointmentSaveError("");
     console.info("[staff-create-appointment] open create modal", {
       selectedDate: selectedDate.toISOString(),
       locationDefault: selectedLocations[0] ?? null,
@@ -1955,6 +2000,7 @@ export default function StaffPickupsPage() {
             <DialogTitle>{isCreating ? "Create Appointment" : "Edit Appointment"}</DialogTitle>
             <DialogDescription>Update appointment details and orders.</DialogDescription>
           </DialogHeader>
+          {appointmentSaveError ? <div role="alert" className="text-sm text-destructive">{appointmentSaveError}</div> : null}
           {isCreating && createModalError ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
               {createModalError}
@@ -2602,6 +2648,7 @@ export default function StaffPickupsPage() {
               variant="hero"
               onClick={handleSaveAppointment}
               disabled={
+                appointmentSaving ||
                 isViewer ||
                 (!isCreating && !canEditAppointments) ||
                 (isCreating && createAvailabilityLoading) ||
@@ -2610,7 +2657,7 @@ export default function StaffPickupsPage() {
                 (isCreating && createPrepayBlocks.length > 0 && !(canUsePrepayOverride && prepayOverride))
               }
             >
-              {isCreating ? "Create Appointment" : "Save Changes"}
+              {appointmentSaving ? "Saving..." : isCreating ? "Create Appointment" : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2659,7 +2706,7 @@ export default function StaffPickupsPage() {
             </Button>
             <Button
               variant="hero"
-              disabled={!returnAckChecked}
+              disabled={!returnAckChecked || appointmentSaving}
               onClick={async () => {
                 if (!pendingCreatePayload || !returnAckChecked) return;
                 setReturnAckOpen(false);
@@ -2683,6 +2730,7 @@ export default function StaffPickupsPage() {
             </DialogDescription>
           </DialogHeader>
 
+          {appointmentSaveError ? <div role="alert" className="text-sm text-destructive">{appointmentSaveError}</div> : null}
           <div className="space-y-4 text-sm">
             <label className="flex items-start gap-3">
               <input
@@ -2726,12 +2774,13 @@ export default function StaffPickupsPage() {
                   setError("Cancellation reason is required to notify the customer.");
                   return;
                 }
-                await submitUpdate(
+                const saved = await submitUpdate(
                   pendingUpdate.id,
                   pendingUpdate.body,
                   notifyCustomer,
                   cancelReason.trim()
                 );
+                if (!saved) return;
                 setNotifyDialogOpen(false);
                 setPendingUpdate(null);
                 setCancelReason("");

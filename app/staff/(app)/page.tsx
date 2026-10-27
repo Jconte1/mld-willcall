@@ -68,6 +68,10 @@ export default function StaffHomePage() {
   const router = useRouter();
   const isViewer = session?.user?.role === "VIEWER" || session?.user?.role === "SALESPERSON";
   const [pickups, setPickups] = useState<StaffPickup[]>([]);
+  const visiblePickups = useMemo(
+    () => pickups.filter((apt) => session?.user?.locationAccess?.includes(apt.locationId)),
+    [pickups, session?.user?.locationAccess]
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [shipmentDrafts, setShipmentDrafts] = useState<Record<string, Record<string, string[]>>>(
@@ -92,6 +96,18 @@ export default function StaffHomePage() {
   const [cancelTarget, setCancelTarget] = useState<StaffPickup | null>(null);
   const [cancelSaving, setCancelSaving] = useState(false);
   const [cancelError, setCancelError] = useState("");
+
+  useEffect(() => {
+    if (itemsAppointmentId && !visiblePickups.some((apt) => apt.id === itemsAppointmentId)) {
+      setItemsOpen(false);
+      setItemsAppointmentId(null);
+      setItemsByOrder({});
+      setItemsOrderLinesByOrder({});
+    }
+    if (cancelTarget && !session?.user?.locationAccess?.includes(cancelTarget.locationId)) {
+      setCancelTarget(null);
+    }
+  }, [visiblePickups, itemsAppointmentId, cancelTarget, session?.user?.locationAccess]);
 
   useEffect(() => {
     if (session?.user?.role === "VIEWER" || session?.user?.role === "SALESPERSON") {
@@ -123,7 +139,9 @@ export default function StaffHomePage() {
         setLoading(false);
         return;
       }
-      const rows: StaffPickup[] = Array.isArray(data?.pickups) ? data.pickups : [];
+      const rows: StaffPickup[] = Array.isArray(data?.pickups)
+        ? data.pickups.filter((apt: StaffPickup) => session?.user?.locationAccess?.includes(apt.locationId))
+        : [];
       setPickups(rows);
       const shipmentMap: Record<string, Record<string, string[]>> = {};
       rows.forEach((apt) => {
@@ -141,30 +159,30 @@ export default function StaffHomePage() {
     if (session?.user?.role !== "VIEWER" && session?.user?.role !== "SALESPERSON") {
       fetchBoard();
     }
-  }, [session?.user?.role]);
+  }, [session?.user?.role, session?.user?.locationAccess?.join("|")]);
 
   const ordersMissingShipments = useMemo(() => {
-    return pickups
+    return visiblePickups
       .filter((apt) => {
         if (apt.status === "Completed") return false;
         const perOrder = shipmentOriginals[apt.id] ?? {};
         return apt.orders.some((order) => (perOrder[order.orderNbr] ?? []).length === 0);
       })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-  }, [pickups, shipmentOriginals]);
+  }, [visiblePickups, shipmentOriginals]);
 
   const readyForPulling = useMemo(() => {
-    return pickups
+    return visiblePickups
       .filter((apt) => {
         const perOrder = shipmentOriginals[apt.id] ?? {};
         const allShipped = apt.orders.every((order) => (perOrder[order.orderNbr] ?? []).length > 0);
         return allShipped && apt.status !== "Ready" && apt.status !== "Completed";
       })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-  }, [pickups, shipmentOriginals]);
+  }, [visiblePickups, shipmentOriginals]);
 
   const readyForPickup = useMemo(() => {
-    return pickups
+    return visiblePickups
       .filter((apt) => {
         if (apt.status !== "Ready") return false;
         const perOrder = shipmentOriginals[apt.id] ?? {};
@@ -172,14 +190,14 @@ export default function StaffHomePage() {
         return allShipped;
       })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-  }, [pickups, shipmentOriginals]);
+  }, [visiblePickups, shipmentOriginals]);
 
   const completedPickups = useMemo(() => {
     const today = new Date();
-    return pickups
+    return visiblePickups
       .filter((apt) => apt.status === "Completed" && isSameDay(new Date(apt.startAt), today))
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-  }, [pickups]);
+  }, [visiblePickups]);
 
   const updateShipmentValue = (appointmentId: string, orderNbr: string, idx: number, value: string) => {
     setShipmentDrafts((prev) => {

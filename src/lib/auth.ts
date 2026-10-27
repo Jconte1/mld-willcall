@@ -135,12 +135,7 @@ export const authOptions: NextAuthOptions = {
       }
 
       // Client-side session.update(...)
-      if (trigger === "update" && session?.user) {
-        (token as any).type = (session.user as any).type ?? (token as any).type;
-        (token as any).staffToken = (session.user as any).staffToken ?? (token as any).staffToken;
-
-        (token as any).role = (session.user as any).role ?? (token as any).role;
-        (token as any).locationAccess = (session.user as any).locationAccess ?? (token as any).locationAccess;
+      if (trigger === "update" && session?.user && (token as any).type === "customer") {
         (token as any).mustChangePassword = (session.user as any).mustChangePassword ?? (token as any).mustChangePassword;
         (token as any).mustCompleteProfile =
           (session.user as any).mustCompleteProfile ?? (token as any).mustCompleteProfile;
@@ -152,6 +147,42 @@ export const authOptions: NextAuthOptions = {
         (token as any).name = (session.user as any).name ?? (token as any).name;
         (token as any).accountRole = (session.user as any).accountRole ?? (token as any).accountRole;
         (token as any).isDeveloper = (session.user as any).isDeveloper ?? (token as any).isDeveloper;
+      }
+
+      // Never authorize staff from browser updates or a stale login snapshot.
+      if (!user && (token as any).type === "staff") {
+        let current: StaffUser | null = null;
+        try {
+          if (!STAFF_API_BASE_URL || !(token as any).staffToken) throw new Error("Staff session unavailable");
+          const res = await fetch(`${STAFF_API_BASE_URL}/api/staff/me`, {
+            headers: { Authorization: `Bearer ${(token as any).staffToken}` },
+            cache: "no-store",
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.status === 401) {
+            (token as any).staffToken = null;
+            (token as any).isActive = false;
+          }
+          if (!res.ok) throw new Error(`Staff permission refresh returned ${res.status}`);
+          const data = await res.json();
+          if (data?.user?.id !== (token as any).id || data.user.isActive !== true ||
+              !["ADMIN", "STAFF", "VIEWER", "SALESPERSON"].includes(data.user.role) ||
+              !Array.isArray(data.user.locationAccess) || !data.user.locationAccess.every((id: unknown) => typeof id === "string")) {
+            throw new Error("Invalid staff permission response");
+          }
+          current = data.user;
+        } catch (err) {
+          console.warn("[willcall][auth] staff permission refresh failed", { message: err instanceof Error ? err.message : "Unknown error" });
+        }
+        (token as any).role = current?.role ?? "VIEWER";
+        (token as any).locationAccess = current?.locationAccess ?? [];
+        if (current) {
+          token.email = current.email;
+          token.name = current.name;
+          (token as any).isActive = true;
+          (token as any).mustChangePassword = Boolean(current.mustChangePassword);
+          (token as any).mustCompleteProfile = Boolean(current.mustCompleteProfile);
+        }
       }
 
       return token;
